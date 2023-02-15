@@ -1,3 +1,10 @@
+acts
+train_all
+output*
+*.sh
+timing.tsv
+*.root
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
