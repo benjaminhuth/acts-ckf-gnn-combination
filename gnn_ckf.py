@@ -78,6 +78,8 @@ assert os.path.exists(digiConfigFile)
 # assert os.path.exists(geoSelectionSeeding)
 assert os.path.exists(geoSelectionExaTrkX)
 
+# Common CKF Performance config
+ckfPerformanceConfig = CKFPerformanceConfig()
 
 
 #############################
@@ -164,75 +166,67 @@ addCKFTracks(
     trackingGeometry,
     field,
     selectedParticles="particles_selected",
+    ckfPerformanceConfig=ckfPerformanceConfig,
     outputDirRoot=str(outputDir),
 )
 
 ################################################################
 # ExaTrkX / TruthTracking (pixels) + KF (pixels) + CKF (other) #
 ################################################################
-s.addAlgorithm(
-    acts.examples.SpacePointMaker(
-        level=acts.logging.INFO,
-        inputSourceLinks="sourcelinks",
-        inputMeasurements="measurements",
-        outputSpacePoints="exatrkx_pixel_spacepoints",
-        trackingGeometry=trackingGeometry,
-        geometrySelection=acts.examples.readJsonGeometryList(
-            str(geoSelectionPixels)
-        ),
+if False:
+    s.addAlgorithm(
+        acts.examples.SpacePointMaker(
+            level=acts.logging.INFO,
+            inputSourceLinks="sourcelinks",
+            inputMeasurements="measurements",
+            outputSpacePoints="exatrkx_pixel_spacepoints",
+            trackingGeometry=trackingGeometry,
+            geometrySelection=acts.examples.readJsonGeometryList(
+                str(geoSelectionPixels)
+            ),
+        )
     )
-)
 
-# exaTrkXConfig = {
-#     "modelDir": "torchscript",
-#     "spacepointFeatures": 3,
-#     "embeddingDim": 8,
-#     "rVal": 0.2,
-#     "knnVal": 500,
-#     "filterCut": 0.01,
-#     "n_chunks": 5,
-#     "edgeCut": 0.5,
-# }
-# 
-# logger.info("Exa.TrkX Configuration")
-# pprint.pprint(exaTrkXConfig, indent=4)
-# 
-# s.addAlgorithm(
-#     acts.examples.TrackFindingAlgorithmExaTrkX(
-#         level=acts.logging.INFO,
-#         inputSpacePoints="exatrkx_pixel_spacepoints",
-#         outputProtoTracks="exatrkx_pixel_prototracks",
-#         trackFinderML=acts.examples.ExaTrkXTrackFindingTorch(**exaTrkXConfig),
-#         rScale = 1000.,
-#         phiScale = np.pi,
-#         zScale = 1000.,
-#     )
-# )
+    exaTrkXConfig = {
+        "modelDir": "torchscript",
+        "spacepointFeatures": 3,
+        "embeddingDim": 8,
+        "rVal": 0.2,
+        "knnVal": 500,
+        "filterCut": 0.01,
+        "n_chunks": 5,
+        "edgeCut": 0.5,
+    }
 
-s.addAlgorithm(
-    acts.examples.TruthTrackFinder(
-        level=acts.logging.INFO,
-        inputParticles="particles_selected",
-        inputMeasurementParticlesMap="measurement_particles_map",
-        outputProtoTracks="exatrkx_pixel_prototracks",
+    logger.info("Exa.TrkX Configuration")
+    pprint.pprint(exaTrkXConfig, indent=4)
+
+    s.addAlgorithm(
+        acts.examples.TrackFindingAlgorithmExaTrkX(
+            level=acts.logging.INFO,
+            inputSpacePoints="exatrkx_pixel_spacepoints",
+            outputProtoTracks="exatrkx_pixel_prototracks",
+            trackFinderML=acts.examples.ExaTrkXTrackFindingTorch(**exaTrkXConfig),
+            rScale = 1000.,
+            phiScale = np.pi,
+            zScale = 1000.,
+        )
     )
-)
+else:
+    s.addAlgorithm(
+        acts.examples.TruthTrackFinder(
+            level=acts.logging.INFO,
+            inputParticles="truth_seeds_selected",
+            inputMeasurementParticlesMap="measurement_particles_map",
+            outputProtoTracks="exatrkx_pixel_prototracks",
+        )
+    )
 
-# This won't work well until we modify also the measurement_particles_map
-#s.addWriter(
-    #acts.examples.TrackFinderPerformanceWriter(
-        #level=acts.logging.INFO,
-        #inputProtoTracks="exatrkx_pixel_prototracks",
-        #inputParticles="particles_initial",
-        #inputMeasurementParticlesMap="measurement_particles_map",
-        #filePath=str(outputDir / "track_finding_performance_exatrkx.root"),
-    #)
-#)
 
 s.addAlgorithm(
     acts.examples.TrackParamsEstimationAlgorithm(
         level=acts.logging.FATAL,
-        inputSpacePoints=["exatrkx_pixel_spacepoints"],
+        inputSpacePoints=["spacepoints"],
         inputProtoTracks="exatrkx_pixel_prototracks",
         inputSourceLinks="sourcelinks",
         outputProtoTracks="exatrkx_pixel_estimated_prototracks",
@@ -246,7 +240,7 @@ s.addAlgorithm(
 s.addAlgorithm(
     acts.examples.TrackFindingFromPrototrackAlgorithm(
         level=acts.logging.INFO,
-        inputProtoTracks="exatrkx_pixel_estimated_prototracks",
+        inputProtoTracks="exatrkx_pixel_prototracks",
         inputMeasurements="measurements",
         inputSourceLinks="sourcelinks",
         inputInitialTrackParameters="exatrkx_pixel_estimated_parameters",
@@ -270,18 +264,29 @@ s.addAlgorithm(
     )
 )
 
+# This won't work well until we modify also the measurement_particles_map
+#s.addWriter(
+    #acts.examples.TrackFinderPerformanceWriter(
+        #level=acts.logging.INFO,
+        #inputProtoTracks="exatrkx_pixel_prototracks",
+        #inputParticles="particles_initial",
+        #inputMeasurementParticlesMap="measurement_particles_map",
+        #filePath=str(outputDir / "track_finding_performance_exatrkx.root"),
+    #)
+#)
+
 s.addWriter(
     acts.examples.CKFPerformanceWriter(
         level=acts.logging.INFO,
-        inputParticles="particles_selected",
+        inputParticles="truth_seeds_selected",
         inputTrajectories="final_trajectories",
         inputMeasurementParticlesMap="measurement_particles_map",
-        # **acts.examples.defaultKWArgs(
-        #     # The bottom seed could be the first, second or third hits on the truth track
-        #     nMeasurementsMin=CKFPerformanceConfigArg.nMeasurementsMin,
-        #     ptMin=CKFPerformanceConfigArg.ptMin,
-        #     truthMatchProbMin=CKFPerformanceConfigArg.truthMatchProbMin,
-        # ),
+        **acts.examples.defaultKWArgs(
+            # The bottom seed could be the first, second or third hits on the truth track
+            nMeasurementsMin=ckfPerformanceConfig.nMeasurementsMin,
+            ptMin=ckfPerformanceConfig.ptMin,
+            truthMatchProbMin=ckfPerformanceConfig.truthMatchProbMin,
+        ),
         filePath=str(outputDir / "performance_kf_plus_ckf.root"),
     )
 )
