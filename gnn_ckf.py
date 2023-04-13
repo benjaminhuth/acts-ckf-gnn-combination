@@ -165,7 +165,6 @@ addCKFTracks(
     s,
     trackingGeometry,
     field,
-    selectedParticles="particles_selected",
     ckfPerformanceConfig=ckfPerformanceConfig,
     outputDirRoot=str(outputDir),
 )
@@ -173,7 +172,7 @@ addCKFTracks(
 ################################################################
 # ExaTrkX / TruthTracking (pixels) + KF (pixels) + CKF (other) #
 ################################################################
-if False:
+if True:
     s.addAlgorithm(
         acts.examples.SpacePointMaker(
             level=acts.logging.INFO,
@@ -222,14 +221,22 @@ else:
         )
     )
 
+s.addAlgorithm(
+    acts.examples.TruthSeedingAlgorithm(
+        level=acts.logging.INFO,
+        inputSpacePoints=["spacepoints"],
+        inputParticles="truth_seeds_selected",
+        inputMeasurementParticlesMap="measurement_particles_map",
+        outputSeeds="truth-seeds",
+        outputParticles="truth_seeds_selected_2",
+        outputProtoTracks="seed_proto_track_output",
+    )
+)
 
 s.addAlgorithm(
     acts.examples.TrackParamsEstimationAlgorithm(
         level=acts.logging.FATAL,
-        inputSpacePoints=["spacepoints"],
-        inputProtoTracks="exatrkx_pixel_prototracks",
-        inputSourceLinks="sourcelinks",
-        outputProtoTracks="exatrkx_pixel_estimated_prototracks",
+        inputSeeds="truth-seeds",
         outputTrackParameters="exatrkx_pixel_estimated_parameters",
         trackingGeometry=trackingGeometry,
         magneticField=field,
@@ -278,7 +285,7 @@ s.addAlgorithm(
 s.addWriter(
     acts.examples.CKFPerformanceWriter(
         level=acts.logging.INFO,
-        inputParticles="truth_seeds_selected",
+        inputParticles="truth_seeds_selected_2",
         inputTrajectories="final_trajectories",
         inputMeasurementParticlesMap="measurement_particles_map",
         **acts.examples.defaultKWArgs(
