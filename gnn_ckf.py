@@ -5,6 +5,7 @@ import yaml
 import pprint
 import time
 import warnings
+import argparse
 
 from typing import Optional, Union
 from pathlib import Path
@@ -20,300 +21,371 @@ from acts.examples.simulation import *
 
 u = acts.UnitConstants
 
-#########################
-# Command line handling #
-#########################
 
-import argparse
+def main():
+    parser = argparse.ArgumentParser(
+        description="Exa.TrkX data generation/reconstruction script"
+    )
 
-parser = argparse.ArgumentParser(description='Exa.TrkX data generation/reconstruction script')
-parser.add_argument('--events', '-n', help="how many events to run", type=int, default=1)
-parser.add_argument('--jobs','-j', help="parallel jobs", type=int, default=1)
-parser.add_argument('--output', '-o', help="output path", type=str, default="./output")
-parser.add_argument('--seed', help='Random seed', type=int, default=42)
-parser.add_argument('--digi', help="digitization mode", type=str, choices=['truth', 'geo', 'smear'], default="smear")
-args = vars(parser.parse_args())
+    # fmt: off
+    parser.add_argument("--events", "-n", help="how many events to run", type=int, default=1)
+    parser.add_argument("--jobs", "-j", help="parallel jobs", type=int, default=1)
+    parser.add_argument("--output", "-o", help="output path", type=str, default="./output")
+    parser.add_argument("--seed", help="Random seed", type=int, default=42)
+    parser.add_argument("--digi", choices=["smear", "geo", "truth"], default="smear")
+    parser.add_argument("--sim", type=str, choices=["fatras", "geant4"], default="geant4")
+    parser.add_argument("--finding", type=str, choices=["truth", "gnn"], default="truth")
+    # fmt: on
 
-try:
-    assert args['events'] > 0
-except:
-    parser.print_help()
-    exit(1)
+    args = vars(parser.parse_args())
 
-outputDir = Path(args["output"])
-outputDir.mkdir(parents=True, exist_ok=True)
+    try:
+        assert args["events"] > 0
+    except:
+        parser.print_help()
+        exit(1)
 
-baseDir = Path(os.path.dirname(__file__))
+    outputDir = Path(args["output"])
+    outputDir.mkdir(parents=True, exist_ok=True)
 
-###########################
-# Load Open Data Detector #
-###########################
+    baseDir = Path(os.path.dirname(__file__))
 
-acts_root = Path("/home/benjamin/Documents/acts_project/acts")
+    ###########################
+    # Load Open Data Detector #
+    ###########################
 
-oddDir = acts_root / "thirdparty/OpenDataDetector"
+    acts_root = Path("/home/benjamin/Documents/acts_project/acts")
 
-oddMaterialMap = oddDir / "data/odd-material-maps.root"
-assert os.path.exists(oddMaterialMap)
+    oddDir = acts_root / "thirdparty/OpenDataDetector"
 
-oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
-detector, trackingGeometry, decorators = getOpenDataDetector(oddDir, mdecorator=oddMaterialDeco)
+    oddMaterialMap = oddDir / "data/odd-material-maps.root"
+    assert os.path.exists(oddMaterialMap)
 
-geoSelectionExaTrkX = baseDir / "detector/odd-geo-selection-whole-detector.json"
-geoSelectionSeeding = oddDir / "config/odd-seeding-config.json"
-geoSelectionPixels = baseDir / "detector/odd-geo-selection-pixels.json"
+    oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
+    detector, trackingGeometry, decorators = getOpenDataDetector(
+        oddDir, mdecorator=oddMaterialDeco
+    )
 
-if args['digi'] == 'smear':
-    digiConfigFile = oddDir / "config/odd-digi-smearing-config.json"
-elif args['digi'] == 'geo':
-    digiConfigFile = baseDir / "detector/odd-digi-geometry-config.json"
-elif args['digi'] == 'truth':
-    digiConfigFile = baseDir / "detector/odd-digi-true-config.json"
+    geoSelectionExaTrkX = baseDir / "detector/odd-geo-selection-whole-detector.json"
+    geoSelectionSeeding = oddDir / "config/odd-seeding-config.json"
+    geoSelectionPixels = baseDir / "detector/odd-geo-selection-pixels.json"
 
-#oddDigiConfigSmear = oddDir / "config/odd-digi-smearing-config.json"
-#assert os.path.exists(oddDigiConfigSmear)
+    if args["digi"] == "smear":
+        digiConfigFile = oddDir / "config/odd-digi-smearing-config.json"
+    elif args["digi"] == "geo":
+        digiConfigFile = baseDir / "detector/odd-digi-geometry-config.json"
+    elif args["digi"] == "truth":
+        digiConfigFile = baseDir / "detector/odd-digi-true-config.json"
 
+    # oddDigiConfigSmear = oddDir / "config/odd-digi-smearing-config.json"
+    # assert os.path.exists(oddDigiConfigSmear)
 
-assert os.path.exists(digiConfigFile)
-# assert os.path.exists(geoSelectionSeeding)
-assert os.path.exists(geoSelectionExaTrkX)
+    assert os.path.exists(digiConfigFile)
+    # assert os.path.exists(geoSelectionSeeding)
+    assert os.path.exists(geoSelectionExaTrkX)
 
-# Common CKF Performance config
-ckfPerformanceConfig = CKFPerformanceConfig()
+    # This selects the tracks we want to look at in the performance plots
+    targetTrackSelectorConfig = TrackSelectorConfig(
+        pt=(500 * u.MeV, None), nMeasurementsMin=3
+    )
 
+    # These particles are returned to the chain after the simulation.
+    # This means:
+    # * When doing truth-track-finding instead of GNN, these are the particles we get seeds from
+    # * When doing real inference with GNN, this should only affect the performance writing
+    targetParticleSelectorConfig = ParticleSelectorConfig(
+        pt=(500 * u.MeV, None),
+        removeNeutral=True,
+    )
 
-#############################
-# Prepare and run sequencer #
-#############################
+    # This is to avoid problems in simulation
+    particlePreSelection = ParticleSelectorConfig(
+        absZ=(0, 1e4),
+        rho=(0, 1e3),
+        removeNeutral=True,
+    )
 
-logger = acts.logging.getLogger("main")
-field = acts.ConstantBField(acts.Vector3(0, 0, 2 * u.T))
-rnd = acts.examples.RandomNumbers(seed=42)
+    #############################
+    # Prepare and run sequencer #
+    #############################
 
-s = acts.examples.Sequencer(
-    events=args['events'],
-    numThreads=args['jobs'],
-    outputDir=str(outputDir),
-)
+    logger = acts.logging.getLogger("main")
+    field = acts.ConstantBField(acts.Vector3(0, 0, 2 * u.T))
+    rnd = acts.examples.RandomNumbers(seed=42)
 
-# s = addParticleGun(
-#     s,
-#     MomentumConfig(1.0 * u.GeV, 10.0 * u.GeV, True),
-#     EtaConfig(-3.0, 3.0, True),
-#     ParticleConfig(4, acts.PdgParticle.eMuon, True),
-#     rnd=rnd,
-#     multiplicity=200,
-# )
+    s = acts.examples.Sequencer(
+        events=args["events"],
+        numThreads=args["jobs"] if args["sim"] == "fatras" else 1,
+        outputDir=str(outputDir),
+        logLevel=acts.logging.INFO,
+    )
 
-s = addPythia8(
-    s,
-    rnd=rnd,
-    outputDirCsv=str(outputDir/"train_all"),
-    hardProcess=["HardQCD:all = on"],
-    #hardProcess=["Top:qqbar2ttbar=on"],
-)
+    # s = addParticleGun(
+    #     s,
+    #     MomentumConfig(1.0 * u.GeV, 10.0 * u.GeV, True),
+    #     EtaConfig(-3.0, 3.0, True),
+    #     ParticleConfig(4, acts.PdgParticle.eMuon, True),
+    #     rnd=rnd,
+    #     multiplicity=200,
+    # )
 
-particleSelection = ParticleSelectorConfig(
-    rho=(0.0*u.mm, 2.0*u.mm),
-    pt=(500*u.MeV, 20*u.GeV),
-    absEta=(0, 3)
-)
+    s = addPythia8(
+        s,
+        rnd=rnd,
+        outputDirCsv=str(outputDir / "train_all"),
+        hardProcess=["HardQCD:all = on"],
+        # hardProcess=["Top:qqbar2ttbar=on"],
+    )
 
-addFatras(
-    s,
-    trackingGeometry,
-    field,
-    rnd=rnd,
-    preSelectParticles=particleSelection,
-    outputDirRoot=str(outputDir)
-)
+    if args["sim"] == "fatras":
+        addFatras(
+            s,
+            trackingGeometry,
+            field,
+            rnd=rnd,
+            preSelectParticles=particlePreSelection,
+            postSelectParticles=targetParticleSelectorConfig,
+            outputDirRoot=str(outputDir),
+        )
+    else:
+        addGeant4(
+            s,
+            detector,
+            trackingGeometry,
+            field,
+            preSelectParticles=particlePreSelection,
+            postSelectParticles=targetParticleSelectorConfig,
+            outputDirCsv=str(outputDir / "train_all"),
+            outputDirRoot=None,
+            rnd=rnd,
+            killVolume=acts.Volume.makeCylinderVolume(r=1050, halfZ=3000),
+            keepParticlesWithoutHits=False,
+        )
 
-s = addDigitization(
-    s,
-    trackingGeometry,
-    field,
-    digiConfigFile=digiConfigFile,
-    outputDirRoot=None,
-    outputDirCsv=str(outputDir/"train_all"),
-    rnd=rnd,
-)
+    addDigitization(
+        s,
+        trackingGeometry,
+        field,
+        digiConfigFile=digiConfigFile,
+        outputDirRoot=None,
+        outputDirCsv=str(outputDir / "train_all"),
+        rnd=rnd,
+    )
+    
+#     addAmbiguityResolution(
+#         
+#     )
 
-######################
-# CKF only for check #
-######################
+    ######################
+    # CKF for comparison #
+    ######################
 
-seedFinderConfig = SeedFinderConfigArg(
-    impactMax = 4.426123855748383,
-    deltaR = (13.639924973033985, 50.0854850448914),
-    sigmaScattering = 7.3401486140533985,
-    radLengthPerSeed = 0.06311548593790932,
-    maxSeedsPerSpM = 0,
-    cotThetaMax = 16.541921673890172,
-    #cotThetaMax=27.310 # eta = 4
-)
+    seedFinderConfig = SeedFinderConfigArg(
+        impactMax=4.426123855748383,
+        deltaR=(13.639924973033985, 50.0854850448914),
+        sigmaScattering=7.3401486140533985,
+        radLengthPerSeed=0.06311548593790932,
+        maxSeedsPerSpM=0,
+        cotThetaMax=16.541921673890172,
+        # cotThetaMax=27.310 # eta = 4
+    )
 
-addSeeding(
-    s,
-    trackingGeometry,
-    field,
-    seedFinderConfigArg=seedFinderConfig,
-    geoSelectionConfigFile=geoSelectionSeeding,
-    outputDirRoot=outputDir,
-)
+    addSeeding(
+        s,
+        trackingGeometry,
+        field,
+        seedFinderConfigArg=seedFinderConfig,
+        geoSelectionConfigFile=geoSelectionSeeding,
+        outputDirRoot=outputDir,
+    )
 
-addCKFTracks(
-    s,
-    trackingGeometry,
-    field,
-    ckfPerformanceConfig=ckfPerformanceConfig,
-    outputDirRoot=str(outputDir),
-)
+    addCKFTracks(
+        s,
+        trackingGeometry,
+        field,
+        outputDirRoot=str(outputDir),
+        trackSelectorConfig=targetTrackSelectorConfig,
+    )
 
-################################################################
-# ExaTrkX / TruthTracking (pixels) + KF (pixels) + CKF (other) #
-################################################################
-if True:
+    ################################################################
+    # ExaTrkX / TruthTracking (pixels) + KF (pixels) + CKF (other) #
+    ################################################################
+
+    if args["finding"] == "gnn":
+        s.addAlgorithm(
+            acts.examples.SpacePointMaker(
+                level=acts.logging.INFO,
+                inputSourceLinks="sourcelinks",
+                inputMeasurements="measurements",
+                outputSpacePoints="exatrkx_pixel_spacepoints",
+                trackingGeometry=trackingGeometry,
+                geometrySelection=acts.examples.readJsonGeometryList(
+                    str(geoSelectionPixels)
+                ),
+            )
+        )
+
+        exaTrkXConfig = {
+            "modelDir": "torchscript",
+            "spacepointFeatures": 3,
+            "embeddingDim": 8,
+            "rVal": 0.2,
+            "knnVal": 500,
+            "filterCut": 0.01,
+            "n_chunks": 5,
+            "edgeCut": 0.5,
+        }
+
+        logger.info("Exa.TrkX Configuration")
+        pprint.pprint(exaTrkXConfig, indent=4)
+
+        s.addAlgorithm(
+            acts.examples.TrackFindingAlgorithmExaTrkX(
+                level=acts.logging.INFO,
+                inputSpacePoints="exatrkx_pixel_spacepoints",
+                outputProtoTracks="exatrkx_pixel_prototracks",
+                trackFinderML=acts.examples.ExaTrkXTrackFindingTorch(**exaTrkXConfig),
+                rScale=1000.0,
+                phiScale=np.pi,
+                zScale=1000.0,
+            )
+        )
+            
+        s.addAlgorithm(
+            acts.examples.PrototracksToSeeds(
+                level=acts.logging.INFO,
+                inputSpacePoints="exatrkx_pixel_spacepoints"
+                if args["finding"] == "gnn"
+                else "spacepoints",
+                inputProtoTracks="exatrkx_pixel_prototracks",
+                outputSeeds="exatrkx_seeds",
+                outputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
+            )
+        )
+    else:
+        print("WARNING: Use truth tracking for Pixels!")
+        s.addAlgorithm(
+            acts.examples.MeasurementMapSelectorAlgorithm(
+                level=acts.logging.INFO,
+                inputSourceLinks="sourcelinks",
+                inputMeasurementParticleMap="measurement_particles_map",
+                outputMeasurementParticleMap="measurement_particles_map_pixels",
+                geometrySelection=acts.examples.readJsonGeometryList(
+                    str(geoSelectionPixels)
+                ),
+            )
+        )
+
+        s.addAlgorithm(
+            acts.examples.TruthTrackFinder(
+                level=acts.logging.INFO,
+                inputParticles="particles_selected",
+                inputMeasurementParticlesMap="measurement_particles_map_pixels",
+                outputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
+            )
+        )
+            
+        s.addAlgorithm(
+            acts.examples.TruthSeedingAlgorithm(
+                level=acts.logging.INFO,
+                inputParticles="particles_selected",
+                inputMeasurementParticlesMap="measurement_particles_map",
+                inputSpacePoints=["spacepoints"],
+                outputParticles="truth_seeded_particles",
+                outputProtoTracks="truth_particle_tracks",
+                outputSeeds="exatrkx_seeds",
+            )
+        )
+
     s.addAlgorithm(
-        acts.examples.SpacePointMaker(
-            level=acts.logging.INFO,
-            inputSourceLinks="sourcelinks",
-            inputMeasurements="measurements",
-            outputSpacePoints="exatrkx_pixel_spacepoints",
+        acts.examples.TrackParamsEstimationAlgorithm(
+            level=acts.logging.FATAL,
+            inputSeeds="exatrkx_seeds",
+            outputTrackParameters="exatrkx_pixel_estimated_parameters",
             trackingGeometry=trackingGeometry,
-            geometrySelection=acts.examples.readJsonGeometryList(
-                str(geoSelectionPixels)
+            magneticField=field,
+            # initialVarInflation=[varInflation]*6,
+        )
+    )
+
+    s.addAlgorithm(
+        acts.examples.TrackFindingFromPrototrackAlgorithm(
+            level=acts.logging.INFO,
+            inputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
+            inputMeasurements="measurements",
+            inputSourceLinks="sourcelinks",
+            inputInitialTrackParameters="exatrkx_pixel_estimated_parameters",
+            outputTracks="final_tracks",
+            measurementSelectorCfg=acts.MeasurementSelector.Config(
+                [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
+            ),  # should be the same as in addCKFTracks
+            trackingGeometry=trackingGeometry,
+            magneticField=field,
+            findTracks=acts.examples.TrackFindingAlgorithm.makeTrackFinderFunction(
+                trackingGeometry,
+                field,
+                acts.logging.INFO,
             ),
         )
     )
 
-    exaTrkXConfig = {
-        "modelDir": "torchscript",
-        "spacepointFeatures": 3,
-        "embeddingDim": 8,
-        "rVal": 0.2,
-        "knnVal": 500,
-        "filterCut": 0.01,
-        "n_chunks": 5,
-        "edgeCut": 0.5,
-    }
-
-    logger.info("Exa.TrkX Configuration")
-    pprint.pprint(exaTrkXConfig, indent=4)
-
-    s.addAlgorithm(
-        acts.examples.TrackFindingAlgorithmExaTrkX(
-            level=acts.logging.INFO,
-            inputSpacePoints="exatrkx_pixel_spacepoints",
-            outputProtoTracks="exatrkx_pixel_prototracks",
-            trackFinderML=acts.examples.ExaTrkXTrackFindingTorch(**exaTrkXConfig),
-            rScale = 1000.,
-            phiScale = np.pi,
-            zScale = 1000.,
-        )
-    )
-else:
-    s.addAlgorithm(
-        acts.examples.TruthTrackFinder(
-            level=acts.logging.INFO,
-            inputParticles="truth_seeds_selected",
-            inputMeasurementParticlesMap="measurement_particles_map",
-            outputProtoTracks="exatrkx_pixel_prototracks",
-        )
-    )
-
-s.addAlgorithm(
-    acts.examples.TruthSeedingAlgorithm(
-        level=acts.logging.INFO,
-        inputSpacePoints=["spacepoints"],
-        inputParticles="truth_seeds_selected",
-        inputMeasurementParticlesMap="measurement_particles_map",
-        outputSeeds="truth-seeds",
-        outputParticles="truth_seeds_selected_2",
-        outputProtoTracks="seed_proto_track_output",
-    )
-)
-
-s.addAlgorithm(
-    acts.examples.TrackParamsEstimationAlgorithm(
-        level=acts.logging.FATAL,
-        inputSeeds="truth-seeds",
-        outputTrackParameters="exatrkx_pixel_estimated_parameters",
-        trackingGeometry=trackingGeometry,
-        magneticField=field,
-        #initialVarInflation=[varInflation]*6,
-    )
-)
-
-s.addAlgorithm(
-    acts.examples.TrackFindingFromPrototrackAlgorithm(
-        level=acts.logging.INFO,
-        inputProtoTracks="exatrkx_pixel_prototracks",
-        inputMeasurements="measurements",
-        inputSourceLinks="sourcelinks",
-        inputInitialTrackParameters="exatrkx_pixel_estimated_parameters",
-        outputTracks="final_tracks",
-        measurementSelectorCfg=acts.MeasurementSelector.Config(
-            [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
-        ),
-        trackingGeometry=trackingGeometry,
-        magneticField=field,
-        findTracks=acts.examples.TrackFindingAlgorithm.makeTrackFinderFunction(
-            trackingGeometry, field
-        ),
-    )
-)
-
-s.addAlgorithm(
-    acts.examples.TracksToTrajectories(
-        level=acts.logging.INFO,
+    addTrackSelection(
+        s,
+        targetTrackSelectorConfig,
         inputTracks="final_tracks",
-        outputTrajectories="final_trajectories",
+        outputTracks="final_tracks_selected",
+        logLevel=acts.logging.INFO,
     )
-)
 
-# This won't work well until we modify also the measurement_particles_map
-#s.addWriter(
-    #acts.examples.TrackFinderPerformanceWriter(
-        #level=acts.logging.INFO,
-        #inputProtoTracks="exatrkx_pixel_prototracks",
-        #inputParticles="particles_initial",
-        #inputMeasurementParticlesMap="measurement_particles_map",
-        #filePath=str(outputDir / "track_finding_performance_exatrkx.root"),
-    #)
-#)
-
-s.addWriter(
-    acts.examples.CKFPerformanceWriter(
-        level=acts.logging.INFO,
-        inputParticles="truth_seeds_selected_2",
-        inputTrajectories="final_trajectories",
-        inputMeasurementParticlesMap="measurement_particles_map",
-        **acts.examples.defaultKWArgs(
-            # The bottom seed could be the first, second or third hits on the truth track
-            nMeasurementsMin=ckfPerformanceConfig.nMeasurementsMin,
-            ptMin=ckfPerformanceConfig.ptMin,
-            truthMatchProbMin=ckfPerformanceConfig.truthMatchProbMin,
-        ),
-        filePath=str(outputDir / "performance_kf_plus_ckf.root"),
+    s.addAlgorithm(
+        acts.examples.TracksToTrajectories(
+            level=acts.logging.INFO,
+            inputTracks="final_tracks_selected",
+            outputTrajectories="final_trajectories_selected",
+        )
     )
-)
 
-#s.addAlgorithm(
-    #acts.examples.TrajectoriesToPrototracks(
-        #level=acts.logging.INFO,
-        #inputTrajectories="final_trajectories",
-        #outputPrototracks="final_prototracks",
-    #)
-#)
+    s.addWriter(
+        acts.examples.CKFPerformanceWriter(
+            level=acts.logging.INFO,
+            inputParticles="particles_initial_selected",
+            inputTrajectories="final_trajectories_selected",
+            inputMeasurementParticlesMap="measurement_particles_map",
+            filePath=str(outputDir / "performance_kf_plus_ckf.root"),
+        )
+    )
 
-#s.addWriter(
-    #acts.examples.TrackFinderPerformanceWriter(
-        #level=acts.logging.INFO,
-        #inputProtoTracks="final_prototracks",
-        #inputParticles="particles_initial",
-        #inputMeasurementParticlesMap="measurement_particles_map",
-        #filePath=str(outputDir / "track_finding_performance_kf_plus_ckf.root"),
-    #)
-#)
-        
-s.run()
+    # This won't work well until we modify also the measurement_particles_map
+    # s.addWriter(
+    # acts.examples.TrackFinderPerformanceWriter(
+    # level=acts.logging.INFO,
+    # inputProtoTracks="exatrkx_pixel_prototracks",
+    # inputParticles="particles_initial",
+    # inputMeasurementParticlesMap="measurement_particles_map",
+    # filePath=str(outputDir / "track_finding_performance_exatrkx.root"),
+    # )
+    # )
+
+    # s.addAlgorithm(
+    # acts.examples.TrajectoriesToPrototracks(
+    # level=acts.logging.INFO,
+    # inputTrajectories="final_trajectories",
+    # outputPrototracks="final_prototracks",
+    # )
+    # )
+
+    # s.addWriter(
+    # acts.examples.TrackFinderPerformanceWriter(
+    # level=acts.logging.INFO,
+    # inputProtoTracks="final_prototracks",
+    # inputParticles="particles_initial",
+    # inputMeasurementParticlesMap="measurement_particles_map",
+    # filePath=str(outputDir / "track_finding_performance_kf_plus_ckf.root"),
+    # )
+    # )
+
+    s.run()
+
+
+if __name__ == "__main__":
+    main()
