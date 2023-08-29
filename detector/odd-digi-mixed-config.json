@@ -1,0 +1,308 @@
+{
+    "acts-geometry-hierarchy-map": {
+        "format-version": 0,
+        "value-identifier": "digitization-configuration"
+    },
+    "entries": [
+        {
+            "description": "pixel barrel",
+            "volume": 17,
+            "value": {
+                "geometric": {
+                    "digital": false,
+                    "indices": [
+                        0,
+                        1
+                    ],
+                    "segmentation": {
+                        "binningdata": [
+                            {
+                                "bins": 336,
+                                "max": 8.4,
+                                "min": -8.4,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binX"
+                            },
+                            {
+                                "bins": 1440,
+                                "max": 36.0,
+                                "min": -36.0,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binY"
+                            }
+                        ]
+                    },
+                    "thickness": 0.0625,
+                    "threshold": 0.001,
+                    "charge-smearing": {
+                        "mean": 0.0,
+                        "stddev": 0.001,
+                        "type": "Gauss"
+                    }
+                }
+            }
+        },
+        {
+            "description": "pixel positive endcap (inner ring)",
+            "volume": 18,
+            "extra": 1,
+            "value": {
+                "geometric": {
+                    "digital": false,
+                    "indices": [
+                        0,
+                        1
+                    ],
+                    "segmentation": {
+                        "binningdata": [
+                            {
+                                "bins": 580,
+                                "max": 14.5,
+                                "min": -14.5,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binX"
+                            },
+                            {
+                                "bins": 1360,
+                                "max": 34.0,
+                                "min": -34.0,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binY"
+                            }
+                        ]
+                    },
+                    "thickness": 0.0625,
+                    "threshold": 0.001,
+                    "charge-smearing": {
+                        "mean": 0.0,
+                        "stddev": 0.001,
+                        "type": "Gauss"
+                    }
+                }
+            }
+        },
+        {
+            "description": "pixel positive endcap (outer ring)",
+            "volume": 18,
+            "extra": 2,
+            "value": {
+                "geometric": {
+                    "digital": false,
+                    "indices": [
+                        0,
+                        1
+                    ],
+                    "segmentation": {
+                        "binningdata": [
+                            {
+                                "bins": 660,
+                                "max": 16.5,
+                                "min": -16.5,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binX"
+                            },
+                            {
+                                "bins": 1360,
+                                "max": 34.0,
+                                "min": -34.0,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binY"
+                            }
+                        ]
+                    },
+                    "thickness": 0.0625,
+                    "threshold": 0.001,
+                    "charge-smearing": {
+                        "mean": 0.0,
+                        "stddev": 0.001,
+                        "type": "Gauss"
+                    }
+                }
+            }
+        },
+        {
+            "description": "pixel negative endcap (inner ring)",
+            "volume": 16,
+            "extra": 1,
+            "value": {
+                "geometric": {
+                    "digital": false,
+                    "indices": [
+                        0,
+                        1
+                    ],
+                    "segmentation": {
+                        "binningdata": [
+                            {
+                                "bins": 580,
+                                "max": 14.5,
+                                "min": -14.5,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binX"
+                            },
+                            {
+                                "bins": 1360,
+                                "max": 34.0,
+                                "min": -34.0,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binY"
+                            }
+                        ]
+                    },
+                    "thickness": 0.0625,
+                    "threshold": 0.001,
+                    "charge-smearing": {
+                        "mean": 0.0,
+                        "stddev": 0.001,
+                        "type": "Gauss"
+                    }
+                }
+            }
+        },
+        {
+            "description": "pixel negative endcap (outer ring)",
+            "volume": 16,
+            "extra": 2,
+            "value": {
+                "geometric": {
+                    "digital": false,
+                    "indices": [
+                        0,
+                        1
+                    ],
+                    "segmentation": {
+                        "binningdata": [
+                            {
+                                "bins": 660,
+                                "max": 16.5,
+                                "min": -16.5,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binX"
+                            },
+                            {
+                                "bins": 1360,
+                                "max": 34.0,
+                                "min": -34.0,
+                                "option": "open",
+                                "type": "equidistant",
+                                "value": "binY"
+                            }
+                        ]
+                    },
+                    "thickness": 0.0625,
+                    "threshold": 0.001,
+                    "charge-smearing": {
+                        "mean": 0.0,
+                        "stddev": 0.001,
+                        "type": "Gauss"
+                    }
+                }
+            }
+        },
+        {
+            "volume": 23,
+            "value": {
+                "smearing": [
+                    {
+                        "index": 0,
+                        "mean": 0.0,
+                        "stddev": 0.043,
+                        "type": "Gauss"
+                    },
+                    {
+                        "index": 1,
+                        "mean": 0.0,
+                        "stddev": 1.2,
+                        "type": "Gauss"
+                    }
+                ]
+            }
+        },
+        {
+            "volume": 24,
+            "value": {
+                "smearing": [
+                    {
+                        "index": 0,
+                        "mean": 0.0,
+                        "stddev": 0.043,
+                        "type": "Gauss"
+                    },
+                    {
+                        "index": 1,
+                        "mean": 0.0,
+                        "stddev": 1.2,
+                        "type": "Gauss"
+                    }
+                ]
+            }
+        },
+        {
+            "volume": 25,
+            "value": {
+                "smearing": [
+                    {
+                        "index": 0,
+                        "mean": 0.0,
+                        "stddev": 0.043,
+                        "type": "Gauss"
+                    },
+                    {
+                        "index": 1,
+                        "mean": 0.0,
+                        "stddev": 1.2,
+                        "type": "Gauss"
+                    }
+                ]
+            }
+        },
+        {
+            "volume": 28,
+            "value": {
+                "smearing": [
+                    {
+                        "index": 0,
+                        "mean": 0.0,
+                        "stddev": 0.072,
+                        "type": "Gauss"
+                    }
+                ]
+            }
+        },
+        {
+            "volume": 29,
+            "value": {
+                "smearing": [
+                    {
+                        "index": 0,
+                        "mean": 0.0,
+                        "stddev": 0.072,
+                        "type": "Gauss"
+                    }
+                ]
+            }
+        },
+        {
+            "volume": 30,
+            "value": {
+                "smearing": [
+                    {
+                        "index": 0,
+                        "mean": 0.0,
+                        "stddev": 0.072,
+                        "type": "Gauss"
+                    }
+                ]
+            }
+        }
+    ]
+}

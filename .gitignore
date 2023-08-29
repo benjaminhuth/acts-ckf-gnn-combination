@@ -4,6 +4,7 @@ output*
 *.sh
 timing.tsv
 *.root
+tmp*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

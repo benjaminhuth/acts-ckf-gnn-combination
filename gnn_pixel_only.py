@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import sys
 import os
 import yaml
@@ -24,50 +23,35 @@ u = acts.UnitConstants
 
 from pipeline import Pipeline
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="Exa.TrkX data generation/reconstruction script"
     )
 
     # fmt: off
-    parser.add_argument("--modeldir","-m", type=str, default="")
+    parser.add_argument("modeldir", type=str)
     parser.add_argument("--events", "-n", help="how many events to run", type=int, default=1)
     parser.add_argument("--jobs", "-j", help="parallel jobs", type=int, default=1)
-    parser.add_argument("--output", "-o", help="output path", type=str, default="./output")
+    parser.add_argument("--output", "-o", help="output path", type=str, default="./output_pixel_only")
     parser.add_argument("--seed", help="Random seed", type=int, default=42)
-    parser.add_argument("--digi", choices=["smear", "truth", "mixed", "mixed-exact"], default="mixed")
+    parser.add_argument("--digi", choices=["smear", "geo", "truth", "mixed", "geo-exact"], default="mixed")
     parser.add_argument("--sim", type=str, choices=["fatras", "geant4"], default="geant4")
-    parser.add_argument("--finding", type=str, choices=["truth", "gnn"], default="truth")
     parser.add_argument("--input", type=str)
     # fmt: on
 
     args = vars(parser.parse_args())
-
-    try:
-        assert args["events"] > 0
-    except:
-        parser.print_help()
-        exit(1)
+    pprint.pprint(args)
 
     pipeline = Pipeline(args)
 
-    if "input" in args:
+    if not args["input"] is None:
         pipeline.readFromFiles()
     else:
         pipeline.addSimulation()
 
-    pipeline.addDefaultCKF()
+    pipeline.addExaTrkX()
 
-    if args["finding"] == "truth":
-        pipeline.addProofOfConceptTruth()
-    else:
-        pipeline.addExaTrkX()
-
-    pipeline.addTrackFindingFromPrototracks()
-
-    # as cross check
-    pipeline.addTruthTrackingKalman()
+    pipeline.addProtoTrackEfficiency()
 
     pipeline.run()
 
