@@ -109,9 +109,12 @@ class Pipeline(acts.examples.Sequencer):
         # * When doing truth-track-finding instead of GNN, these are the particles we get seeds from
         # * When doing real inference with GNN, this should only affect the performance writing
         self.targetParticleSelectorConfig = ParticleSelectorConfig(
+            removeNeutral=True,
             pt=(self.minPT, None),
             measurements=(self.minHits, None),
-            removeNeutral=True,
+            measurementGeometrySelection=acts.examples.readJsonGeometryList(
+                str(self.geoSelectionPixels)
+            ),
         )
 
         # This is to avoid problems in simulation
@@ -121,22 +124,35 @@ class Pipeline(acts.examples.Sequencer):
             removeNeutral=True,
         )
 
+        # For both CKFs:
+        self.measurementSelectorCfg = acts.MeasurementSelector.Config(
+            [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
+        )
+        # self.measurementSelectorCfg = acts.MeasurementSelector.Config(
+        #     [(acts.GeometryIdentifier(), ([], [5.0], [5]))]
+        # )
+
+        # Magnetic field
         self.field = acts.ConstantBField(acts.Vector3(0, 0, 2 * u.T))
 
+        # Random numbers
         seed = args["seed"] if "seed" in args else 42
         self.rnd = acts.examples.RandomNumbers(seed=seed)
 
-        self.hasSimulation = False
-        self.hasCKF = False
-        self.hasPixelTrackFinding = False
-        self.hasTrackFindingFromPrototrack = False
-
+        # Binning cfg for plots
         self.binningCfg = {
             "Pt" : acts.examples.Binning("pT [GeV/c]", list(np.logspace(-2,2,40))),
             "Eta" : acts.examples.Binning("#eta", 40, -4, 4),
             "Phi" : acts.examples.Binning("#phi", 100, -3.15, 3.15),
             "Num": acts.examples.Binning("N", 30, -0.5, 29.5),
         }
+
+        # State checkes
+        self.hasSimulation = False
+        self.hasCKF = False
+        self.hasPixelTrackFinding = False
+        self.hasTrackFindingFromPrototrack = False
+
 
 
     def addDigitizationAndParticleSelection(self):
@@ -146,7 +162,7 @@ class Pipeline(acts.examples.Sequencer):
             self.field,
             digiConfigFile=self.digiConfigFile,
             outputDirRoot=None,
-            outputDirCsv=None,
+            outputDirCsv=self.args["outputCsvDigitization"],
             rnd=self.rnd,
         )
 
@@ -198,6 +214,7 @@ class Pipeline(acts.examples.Sequencer):
             self.targetParticleSelectorConfig,
             inputParticles="particle_selection_from_truth_seeding",
             inputMeasurementParticlesMap="measurement_particles_map_pixels",
+            inputMeasurements="measurements",
             outputParticles=self.target_particles_key,
             logLevel=acts.logging.DEBUG,
         )
@@ -262,7 +279,8 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
-        self.addDigitizationAndParticleSelection()
+        if "digi" in self.args:
+            self.addDigitizationAndParticleSelection()
 
     def addSimulation(self):
         assert not self.hasSimulation
@@ -321,7 +339,8 @@ class Pipeline(acts.examples.Sequencer):
             )
             self.all_particles_key = "geant4_particles_initial"
 
-        self.addDigitizationAndParticleSelection()
+        if "digi" in self.args:
+            self.addDigitizationAndParticleSelection()
 
 
     def addDefaultCKF(self):
@@ -366,6 +385,7 @@ class Pipeline(acts.examples.Sequencer):
                 filePath=str(self.outputDir / ("performance_standard_ckf.root")),
                 effPlotToolConfig = acts.examples.EffPlotToolConfig(self.binningCfg),
                 duplicationPlotToolConfig = acts.examples.DuplicationPlotToolConfig(self.binningCfg),
+                fakeRatePlotToolConfig = acts.examples.FakeRatePlotToolConfig(self.binningCfg),
             )
         )
 
@@ -373,22 +393,23 @@ class Pipeline(acts.examples.Sequencer):
     def addProofOfConceptTruth(self):
         assert not self.hasPixelTrackFinding
         self.hasPixelTrackFinding = True
+        self.workflow_stem = "proof_of_concept"
 
         self.addAlgorithm(
             acts.examples.TruthTrackFinder(
                 level=acts.logging.INFO,
                 inputParticles=self.target_particles_key,
                 inputMeasurementParticlesMap="measurement_particles_map_pixels",
-                outputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
+                outputProtoTracks="pixel_prototracks_before_seeds",
             )
         )
 
-        self.addWhiteboardAlias("exatrkx_seeds", "seeds_from_particle_selection")
-        self.perfplot_stem = "proof_of_concept"
+
 
     def addExaTrkX(self):
         assert not self.hasPixelTrackFinding
         self.hasPixelTrackFinding = True
+        self.workflow_stem = "gnn_plus_ckf"
 
         modelDir = Path(self.args["modeldir"])
 
@@ -430,9 +451,9 @@ class Pipeline(acts.examples.Sequencer):
 
         self.addAlgorithm(
             acts.examples.TrackFindingAlgorithmExaTrkX(
-                level=acts.logging.VERBOSE,
+                level=acts.logging.DEBUG,
                 inputSpacePoints="pixel_spacepoints",
-                outputProtoTracks="exatrkx_pixel_prototracks",
+                outputProtoTracks="pixel_prototracks_before_seeds",
                 inputClusters="clusters",
                 inputSimHits="simhits",
                 inputParticles=self.all_particles_key,
@@ -448,38 +469,38 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
-        (self.outputDir/"csv").mkdir(exist_ok=True, parents=True)
-        self.addWriter(
-            acts.examples.CsvProtoTrackWriter(
-                level=acts.logging.INFO,
-                inputSpacepoints="pixel_spacepoints",
-                inputPrototracks="exatrkx_pixel_prototracks",
-                outputDir=str(self.outputDir/"csv"),
-            )
-        )
-
-        self.addAlgorithm(
-            acts.examples.PrototracksToSeeds(
-                level=acts.logging.INFO,
-                inputSpacePoints="pixel_spacepoints",
-                inputProtoTracks="exatrkx_pixel_prototracks",
-                outputSeeds="exatrkx_seeds",
-                outputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
-            )
-        )
-
-        self.perfplot_stem = "gnn_plus_ckf"
-
-
 
     def addTrackFindingFromPrototracks(self):
         assert not self.hasTrackFindingFromPrototrack
         self.hasTrackFindingFromPrototrack = True
 
+        csvOutDir = self.outputDir/self.workflow_stem
+        csvOutDir.mkdir(exist_ok=True, parents=True)
+
+        self.addAlgorithm(
+            acts.examples.PrototracksToSeeds(
+                level=acts.logging.DEBUG,
+                inputSpacePoints="pixel_spacepoints",
+                inputProtoTracks="pixel_prototracks_before_seeds",
+                outputSeeds="seeds_from_prototracks",
+                outputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
+                advancedSeeding=True,
+            )
+        )
+
+        self.addWriter(
+            acts.examples.CsvProtoTrackWriter(
+                level=acts.logging.INFO,
+                inputSpacepoints="pixel_spacepoints",
+                inputPrototracks="exatrkx_pixel_prototracks_after_seeds",
+                outputDir=csvOutDir,
+            )
+        )
+
         self.addAlgorithm(
             acts.examples.TrackParamsEstimationAlgorithm(
-                level=acts.logging.ERROR,
-                inputSeeds="exatrkx_seeds",
+                level=acts.logging.DEBUG,
+                inputSeeds="seeds_from_prototracks",
                 outputTrackParameters="exatrkx_pixel_estimated_parameters",
                 trackingGeometry=self.trackingGeometry,
                 magneticField=self.field,
@@ -487,17 +508,24 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
+        self.addWriter(
+            acts.examples.CsvTrackParameterWriter(
+                level=acts.logging.INFO,
+                inputTrackParameters="exatrkx_pixel_estimated_parameters",
+                outputDir=csvOutDir,
+                outputStem="parameters.csv",
+            )
+        )
+
         self.addAlgorithm(
             acts.examples.TrackFindingFromPrototrackAlgorithm(
-                level=acts.logging.VERBOSE,
+                level=acts.logging.DEBUG,
                 inputProtoTracks="exatrkx_pixel_prototracks_after_seeds",
                 inputMeasurements="measurements",
                 inputSourceLinks="sourcelinks",
                 inputInitialTrackParameters="exatrkx_pixel_estimated_parameters",
                 outputTracks="final_tracks",
-                measurementSelectorCfg=acts.MeasurementSelector.Config(
-                    [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
-                ),  # should be the same as in addCKFTracks
+                measurementSelectorCfg=self.measurementSelectorCfg,
                 trackingGeometry=self.trackingGeometry,
                 magneticField=self.field,
                 findTracks=acts.examples.TrackFindingAlgorithm.makeTrackFinderFunction(
@@ -530,7 +558,7 @@ class Pipeline(acts.examples.Sequencer):
                 inputParticles=self.target_particles_key,
                 inputTrajectories="final_trajectories_selected",
                 inputMeasurementParticlesMap="measurement_particles_map",
-                filePath=str(self.outputDir / ("performance_" + self.perfplot_stem + ".root")),
+                filePath=str(self.outputDir / ("performance_" + self.workflow_stem + ".root")),
                 effPlotToolConfig = acts.examples.EffPlotToolConfig(self.binningCfg),
                 duplicationPlotToolConfig = acts.examples.DuplicationPlotToolConfig(self.binningCfg),
             )
@@ -585,12 +613,12 @@ class Pipeline(acts.examples.Sequencer):
             "energyLoss": True,
             "reverseFilteringMomThreshold": 0.0,
             "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
-            "level": acts.logging.ERROR,
+            "level": acts.logging.WARNING,
         }
 
         self.addAlgorithm(
             acts.examples.TrackFittingAlgorithm(
-                level=acts.logging.ERROR,
+                level=acts.logging.WARNING,
                 inputMeasurements="measurements",
                 inputSourceLinks="sourcelinks",
                 inputProtoTracks="truth_tracking_prototracks_whole_detector",
@@ -622,7 +650,7 @@ class Pipeline(acts.examples.Sequencer):
 
         self.addWriter(
             acts.examples.CKFPerformanceWriter(
-                level=acts.logging.ERROR,
+                level=acts.logging.WARNING,
                 inputParticles=self.target_particles_key,
                 inputTrajectories="final_trajectories_kalman",
                 inputMeasurementParticlesMap="measurement_particles_map",
