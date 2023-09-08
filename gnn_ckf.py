@@ -31,23 +31,21 @@ def main():
     )
 
     # fmt: off
+    parser.add_argument("--run_proof_of_concept","-poc", action='store_true')
+    parser.add_argument("--run_gnn","-gnn", action='store_true')
+    parser.add_argument("--run_ckf","-ckf", action='store_true')
+    parser.add_argument("--run_truth_kalman","-km", action='store_true')
     parser.add_argument("--modeldir","-m", type=str, default="")
     parser.add_argument("--events", "-n", help="how many events to run", type=int, default=1)
     parser.add_argument("--jobs", "-j", help="parallel jobs", type=int, default=1)
     parser.add_argument("--output", "-o", help="output path", type=str, default="./output")
-    parser.add_argument("--output_digi", type=bool, default=False)
     parser.add_argument("--seed", help="Random seed", type=int, default=42)
     parser.add_argument("--digi", choices=["smear", "truth", "mixed", "mixed-exact"], default="mixed")
     parser.add_argument("--sim", type=str, choices=["fatras", "geant4"], default="geant4")
-    parser.add_argument("--finding", type=str, choices=["truth", "gnn"], default="truth")
     parser.add_argument("--input", type=str)
     # fmt: on
 
     args = vars(parser.parse_args())
-
-    if args["output_digi"]:
-        args["outputCsvDigitization"] = os.path.join(args["output"], "digi")
-        Path(args["outputCsvDigitization"]).mkdir(exist_ok=True, parents=True)
 
     try:
         assert args["events"] > 0
@@ -62,17 +60,14 @@ def main():
     else:
         pipeline.addSimulation()
 
-    pipeline.addDefaultCKF()
-
-    if args["finding"] == "truth":
-        pipeline.addProofOfConceptTruth()
-    else:
-        pipeline.addExaTrkX()
-
-    pipeline.addTrackFindingFromPrototracks()
-
-    # as cross check
-    pipeline.addTruthTrackingKalman()
+    if args["run_ckf"]:
+        pipeline.addDefaultCKF()
+    if args["run_proof_of_concept"]:
+        pipeline.addProofOfConceptWorkflow()
+    if args["run_gnn"]:
+        pipeline.addExaTrkXWorkflow()
+    if args["run_truth_kalman"]:
+        pipeline.addTruthTrackingKalman()
 
     pipeline.run()
 

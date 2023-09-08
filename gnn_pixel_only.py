@@ -23,6 +23,7 @@ u = acts.UnitConstants
 
 from pipeline import Pipeline
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Exa.TrkX data generation/reconstruction script"

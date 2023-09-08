@@ -76,7 +76,6 @@ def main():
     #         )
     #     )
 
-
     pipeline.addExaTrkX()
 
     pipeline.addProtoTrackEfficiency()
