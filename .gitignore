@@ -1,3 +1,4 @@
+.snakemake
 acts
 train_all
 output*
@@ -5,6 +6,7 @@ output*
 timing.tsv
 *.root
 tmp*
+test*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

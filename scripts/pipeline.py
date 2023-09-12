@@ -34,18 +34,23 @@ class Pipeline(acts.examples.Sequencer):
         self.outputDir = Path(args["output"])
         self.outputDir.mkdir(parents=True, exist_ok=True)
 
+        if self.args["sim"] is not None and self.args["sim"] != "fatras":
+            self.args["jobs"] = 1
+
         with open(self.outputDir / "config.json", "w") as f:
             json.dump(self.args, f, indent=4)
 
+        pprint.pprint(self.args, indent=4)
+
         super().__init__(
-            events=args["events"],
-            numThreads=args["jobs"] if args["sim"] == "fatras" else 1,
+            events=self.args["events"],
+            numThreads=self.args["jobs"],
             outputDir=self.outputDir,
             logLevel=acts.logging.INFO,
             trackFpes=False,
         )
 
-        baseDir = Path(os.path.dirname(__file__))
+        baseDir = Path(os.path.dirname(__file__)).parent
 
         ###########################
         # Load Open Data Detector #
@@ -104,12 +109,12 @@ class Pipeline(acts.examples.Sequencer):
             assert os.path.exists(self.digiConfigFile)
 
         # Target Thresholds
-        self.minPT = 500 * u.MeV
-        self.minHits = 3
+        self.minPT = self.args["minPT"] or 500 * u.MeV
+        self.minHits = self.args["minHits"] or 3
 
         # This selects the tracks we want to look at in the performance plots
         self.targetTrackSelectorConfig = TrackSelectorConfig(
-            pt=(self.minPT, None), nMeasurementsMin=self.minHits
+            pt=(500 * u.MeV, None), nMeasurementsMin=3
         )
 
         # These particles are returned to the chain after the simulation.
@@ -421,10 +426,11 @@ class Pipeline(acts.examples.Sequencer):
         assert not self.hasExaTrkxWorkflow
         self.hasExaTrkxWorkflow = True
 
+        exatrkxLogLevel = acts.logging.INFO
         modelDir = Path(self.args["modeldir"])
 
         metricLearningConfig = {
-            "level": acts.logging.VERBOSE,
+            "level": exatrkxLogLevel,
             "modelPath": modelDir / "embedding.pt",
             "numFeatures": 7,
             "embeddingDim": 8,
@@ -433,7 +439,7 @@ class Pipeline(acts.examples.Sequencer):
         }
 
         filterConfig = {
-            "level": acts.logging.VERBOSE,
+            "level": exatrkxLogLevel,
             "numFeatures": 3,
             "cut": 0.5,
             "modelPath": modelDir / "filter.pt",
@@ -442,7 +448,7 @@ class Pipeline(acts.examples.Sequencer):
         }
 
         gnnConfig = {
-            "level": acts.logging.VERBOSE,
+            "level": exatrkxLogLevel,
             "numFeatures": 3,
             "cut": 0.5,
             "undirected": True,
@@ -459,11 +465,11 @@ class Pipeline(acts.examples.Sequencer):
         ]
         trackBuilder = acts.examples.BoostTrackBuilding(acts.logging.DEBUG)
 
-        workflow_stem = "exatrkx"
+        workflow_stem = "gnn_plus_ckf"
         prototrack_key = f"{workflow_stem}_prototracks_before_seeds"
         self.addAlgorithm(
             acts.examples.TrackFindingAlgorithmExaTrkX(
-                level=acts.logging.DEBUG,
+                level=exatrkxLogLevel,
                 inputSpacePoints="pixel_spacepoints",
                 outputProtoTracks=prototrack_key,
                 inputClusters="clusters",
@@ -478,6 +484,7 @@ class Pipeline(acts.examples.Sequencer):
                 zScale=3000.0,
                 clusterXScale=-1.0,
                 clusterYScale=-1.0,
+                useGPUsParallel=True,
             )
         )
 
@@ -503,7 +510,7 @@ class Pipeline(acts.examples.Sequencer):
                 outputSeeds=seed_key,
                 outputProtoTracks=prototrack_after_seed_key,
                 outputParameters=pars_key,
-                advancedSeeding=True,
+                advancedSeeding=self.args["advanced_seeding"],
             )
         )
 
@@ -576,6 +583,9 @@ class Pipeline(acts.examples.Sequencer):
                 duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
                     self.binningCfg
                 ),
+                fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
+                    self.binningCfg
+                ),
             )
         )
 
@@ -600,9 +610,21 @@ class Pipeline(acts.examples.Sequencer):
 
     def addTruthTrackingKalman(self):
         self.addAlgorithm(
+            acts.examples.TruthSeedingAlgorithm(
+                level=acts.logging.ERROR,
+                inputParticles=self.target_particles_key,
+                inputMeasurementParticlesMap="measurement_particles_map",
+                inputSpacePoints=["spacepoints"],
+                outputParticles="kalman_truth_seeded_particles",
+                outputProtoTracks="kalman_truth_seeded_prototracks",
+                outputSeeds="kalman_truth_seeds",
+            )
+        )
+
+        self.addAlgorithm(
             acts.examples.TruthTrackFinder(
                 level=acts.logging.INFO,
-                inputParticles=self.target_particles_key,
+                inputParticles="kalman_truth_seeded_particles",
                 inputMeasurementParticlesMap="measurement_particles_map",
                 outputProtoTracks="truth_tracking_prototracks_whole_detector",
             )
@@ -611,7 +633,7 @@ class Pipeline(acts.examples.Sequencer):
         self.addAlgorithm(
             acts.examples.TrackParamsEstimationAlgorithm(
                 level=acts.logging.ERROR,
-                inputSeeds="seeds_from_particle_selection",
+                inputSeeds="kalman_truth_seeds",
                 outputTrackParameters="kalman_track_parameters",
                 trackingGeometry=self.trackingGeometry,
                 magneticField=self.field,
@@ -668,6 +690,9 @@ class Pipeline(acts.examples.Sequencer):
                 filePath=str(self.outputDir / ("performance_truth_kalman.root")),
                 effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
                 duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
+                    self.binningCfg
+                ),
+                fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
                     self.binningCfg
                 ),
             )

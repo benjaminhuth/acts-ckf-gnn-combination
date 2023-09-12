@@ -42,10 +42,16 @@ def main():
     parser.add_argument("--seed", help="Random seed", type=int, default=42)
     parser.add_argument("--digi", choices=["smear", "truth", "mixed", "mixed-exact"], default="mixed")
     parser.add_argument("--sim", type=str, choices=["fatras", "geant4"], default="geant4")
-    parser.add_argument("--input", type=str)
+    parser.add_argument("--input", "-i", type=str)
+    parser.add_argument("--minPT", type=float, default=0.5)
+    parser.add_argument("--minHits", type=int, default=3)
+    parser.add_argument("--advanced_seeding", action="store_true")
     # fmt: on
 
     args = vars(parser.parse_args())
+
+    if "input" in args:
+        del args["sim"]
 
     try:
         assert args["events"] > 0
