@@ -494,7 +494,6 @@ class Pipeline(acts.examples.Sequencer):
             self._addProtoTrackEfficiency(prototrack_key)
 
     def _addTrackFindingFromPrototracks(self, prototracks_key, workflow_stem):
-
         csvOutDir = self.outputDir / workflow_stem
         csvOutDir.mkdir(exist_ok=True, parents=True)
 
