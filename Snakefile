@@ -2,7 +2,21 @@
 
 RECO_TYPES = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept", "truth_kalman"]
 FORMATS = ["csv", "root"]
-DIGI = {"no_threshold": "mixed-exact"}
+DIGI_CONFIG_FILE = {
+    "no_threshold": "detector/odd-digi-mixed-config-exact.json",
+    "125_thickness": "detector/odd-digi-mixed-config-125thickness.json",
+    "no_threshold_2": "detector/odd-digi-mixed-config-exact-125thickness.json",
+}
+DIGI_MINI_ENERGY_DEPOSIT = {
+    "no_threshold": 0.0,
+    "125_thickness": 3.65e-06,  # in GeV, 1000 * 3.65 * u.eV
+    "no_threshold_2": 3.65e-06,  # in GeV, 1000 * 3.65 * u.eV
+}
+TARGET_PT = {
+    "no_threshold": 0.5,  # GeV
+    "125_thickness": 1.0,  # GeV
+    "no_threshold_2": 1.0, # GeV
+}
 
 
 envvars:
@@ -17,11 +31,6 @@ rule simulate_data:
         "python3 scripts/generate_events.py -n10 -o tmp/simdata"
 
 
-rule available_models:
-    output:
-        "torchscript/no_threshold/gnn.pt",
-
-
 rule inference:
     input:
         "tmp/simdata/particles_initial.root",
@@ -33,11 +42,23 @@ rule inference:
             type=RECO_TYPES,
             ext=FORMATS,
         ),
+        "tmp/{exatrkx_models}/digi/event000000000-measurements.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-measurement-simhit-map.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-cells.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-spacepoint.csv",
+        "tmp/{exatrkx_models}/gnn_plus_ckf/event000000000-prototracks.csv",
     params:
-        digi=lambda wildcards: DIGI[wildcards.exatrkx_models],
+        cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
+        digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.exatrkx_models],
+        min_energy_deposit=lambda wildcards: DIGI_MINI_ENERGY_DEPOSIT[
+            wildcards.exatrkx_models
+        ],
+        target_pt=lambda wildcards: TARGET_PT[wildcards.exatrkx_models],
     shell:
-        "python3 scripts/gnn_ckf.py -n1 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
-        "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models}"
+        "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
+        "python3 scripts/gnn_ckf.py -n7 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
+        "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
+        "--minEnergyDeposit={params.min_energy_deposit} --minPT={params.target_pt}"
 
 
 rule performance_plots:
@@ -66,10 +87,65 @@ rule prototrack_based_plots:
         "scripts/prototrack_plots.py"
 
 
+rule make_pyg:
+    input:
+        "config/data_reading.yaml",
+        "config/detectors.csv",
+        "tmp/simdata/particles_initial.root",
+        "tmp/simdata/hits.root",
+        "tmp/{exatrkx_models}/digi/event000000000-measurements.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-measurement-simhit-map.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-cells.csv",
+    output:
+        "tmp/{exatrkx_models}/pyg/event000000000-graph.pyg",
+    script:
+        "scripts/make_pyg.py"
+
+
+rule plot_unmatched_prototracks:
+    input:
+        "config/detectors.csv",
+        "tmp/simdata/particles_initial.root",
+        "tmp/simdata/hits.root",
+        "tmp/{exatrkx_models}/performance_gnn_plus_ckf.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-measurement-simhit-map.csv",
+        "tmp/{exatrkx_models}/digi/event000000000-spacepoint.csv",
+        "tmp/{exatrkx_models}/gnn_plus_ckf/event000000000-prototracks.csv",
+        "tmp/{exatrkx_models}/gnn_plus_ckf/event000000000-exatrkx-graph.csv",
+    output:
+        "plots/{exatrkx_models}/largest_unmatched_prototracks.pdf",
+    script:
+        "scripts/plot_unmatched_prototracks.py"
+
+
+
+rule plot_edge_based_metrics:
+    input:
+        "tmp/{exatrkx_models}/pyg/event000000000-graph.pyg",
+        "torchscript/{exatrkx_models}/embedding.pt",
+        "torchscript/{exatrkx_models}/filter.pt",
+        "torchscript/{exatrkx_models}/gnn.pt",
+    output:
+        "plots/{exatrkx_models}/filter_gnn_score_hists.png",
+        "plots/{exatrkx_models}/edge_metrics_history.png",
+    params:
+        target_min_hits=3,
+        target_min_pt=lambda wildcards: TARGET_PT[wildcards.exatrkx_models],
+    script:
+        "scripts/plot_edge_based_metrics_stages.py"
+
+
+
+#MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
+MODELS=["no_threshold_2",]
+
 rule all:
     default_target: True
     input:
-        "plots/no_threshold/perf_plots.png",
-        "plots/no_threshold/detailed_matching_hist.png",
-        "plots/no_threshold/detailed_matching_eff.png",
-        "plots/no_threshold/detailed_not_matched_analysis.png",
+        expand("plots/{models}/perf_plots.png", models=MODELS),
+        expand("plots/{models}/detailed_matching_hist.png", models=MODELS),
+        expand("plots/{models}/detailed_matching_eff.png", models=MODELS),
+        expand("plots/{models}/detailed_not_matched_analysis.png", models=MODELS),
+        expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
+        expand("plots/{models}/edge_metrics_history.png", models=MODELS),
+

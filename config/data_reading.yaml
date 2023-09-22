@@ -1,0 +1,25 @@
+simhit_stem: hits
+use_truth_hits: False
+readout_window: [0.0, 25.0]
+hit_index_based_track_building: True
+noise_momentum_threshold: 0.01 # GeV == 10 MeV
+
+#loop_protection:
+#    mode: pseudo
+#    min_track_extent: 10 #mm
+
+feature_sets:
+    hit_features: [hit_id, x, y, z, r, phi, eta, region, cell_count, cell_val, lx, ly]
+    track_features: [particle_id, pt, radius, nhits, particle_eta]
+
+module_columns: [volume_id, layer_id, module_id]
+
+
+region_labels:
+    1: {volume_id: 17}
+    2: {volume_id: [16, 18]}
+    3: {volume_id: 24}
+    4: {volume_id: [23, 25]}
+    5: {volume_id: 29}
+    6: {volume_id: [28, 30]}
+

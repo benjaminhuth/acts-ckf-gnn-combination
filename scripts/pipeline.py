@@ -86,7 +86,9 @@ class Pipeline(acts.examples.Sequencer):
         assert os.path.exists(self.geoSelectionPixels)
 
         if "digi" in args:
-            if args["digi"] == "smear":
+            if Path(args["digi"]).exists():
+                self.digiConfigFile = args["digi"]
+            elif args["digi"] == "smear":
                 self.digiConfigFile = oddDir / "config/odd-digi-smearing-config.json"
             elif args["digi"] == "geo":
                 self.digiConfigFile = (
@@ -178,6 +180,7 @@ class Pipeline(acts.examples.Sequencer):
             outputDirRoot=None,
             outputDirCsv=outputDigi,
             rnd=self.rnd,
+            minEnergyDeposit=self.args["minEnergyDeposit"]
         )
 
         # Make some event data selection for pixels
@@ -191,6 +194,14 @@ class Pipeline(acts.examples.Sequencer):
                 geometrySelection=acts.examples.readJsonGeometryList(
                     str(self.geoSelectionPixels)
                 ),
+            )
+        )
+
+        self.addWriter(
+            acts.examples.CsvSpacepointWriter(
+                level=acts.logging.INFO,
+                inputSpacepoints="pixel_spacepoints",
+                outputDir=outputDigi,
             )
         )
 
@@ -306,15 +317,6 @@ class Pipeline(acts.examples.Sequencer):
             mean=acts.Vector4(0, 0, 0, 0),
         )
 
-        # addParticleGun(
-        #    self,
-        #    MomentumConfig(5.0 * u.GeV, 5.0 * u.GeV, True),
-        #    EtaConfig(-1.0, 1.0, True),
-        #    ParticleConfig(1, acts.PdgParticle.eMuon, True),
-        #    rnd=self.rnd,
-        #    multiplicity=2,
-        # )
-
         addPythia8(
             self,
             vtxGen=vtxGen,
@@ -322,6 +324,8 @@ class Pipeline(acts.examples.Sequencer):
             outputDirCsv=str(self.outputDir / "train_all"),
             hardProcess=["Top:qqbar2ttbar=on"],
         )
+
+        self.all_particles_key = "all_particles_initial"
 
         if self.args["sim"] == "fatras":
             addFatras(
@@ -334,8 +338,8 @@ class Pipeline(acts.examples.Sequencer):
                 enableInteractions=True,
                 outputDirRoot=self.args["outputDirRoot"],
                 pMin=1 * u.MeV,
+                outputParticlesInitial=self.all_particles_key,
             )
-            self.all_particles_key = "fatras_particles_initial"
         else:
             addGeant4(
                 self,
@@ -345,12 +349,37 @@ class Pipeline(acts.examples.Sequencer):
                 preSelectParticles=self.particlePreSelection,
                 postSelectParticles=None,
                 outputDirCsv=None,
-                outputDirRoot=self.args["outputDirRoot"],
+                outputDirRoot=None,
                 rnd=self.rnd,
                 killVolume=acts.Volume.makeCylinderVolume(r=1050, halfZ=3000),
                 keepParticlesWithoutHits=False,
+                outputParticlesInitial=self.all_particles_key,
             )
-            self.all_particles_key = "geant4_particles_initial"
+
+        self.addAlgorithm(
+            acts.examples.HitSelector(
+                level=acts.logging.DEBUG,
+                inputHits="simhits",
+                outputHits="simhits_selected",
+                maxTime=25.0 * u.ns,
+            )
+        )
+
+        self.addWriter(
+            acts.examples.RootParticleWriter(
+                level=acts.logging.INFO,
+                inputParticles=self.all_particles_key,
+                filePath=Path(self.args["outputDirRoot"]) / "particles_initial.root",
+            )
+        )
+
+        self.addWriter(
+            acts.examples.RootSimHitWriter(
+                level=acts.logging.INFO,
+                inputSimHits="simhits_selected",
+                filePath=Path(self.args["outputDirRoot"]) / "hits.root",
+            )
+        )
 
         if "digi" in self.args:
             self.addDigitizationAndParticleSelection()
@@ -360,12 +389,12 @@ class Pipeline(acts.examples.Sequencer):
         self.hasCKF = True
 
         seedFinderConfig = SeedFinderConfigArg(
-            impactMax=4.426123855748383,
-            deltaR=(13.639924973033985, 50.0854850448914),
-            sigmaScattering=7.3401486140533985,
-            radLengthPerSeed=0.06311548593790932,
-            maxSeedsPerSpM=0,
-            cotThetaMax=16.541921673890172,
+            # impactMax=4.426123855748383,
+            # deltaR=(13.639924973033985, 50.0854850448914),
+            # sigmaScattering=7.3401486140533985,
+            # radLengthPerSeed=0.06311548593790932,
+            # maxSeedsPerSpM=0,
+            cotThetaMax=10.01788, #16.541921673890172,
             # cotThetaMax=27.310 # eta = 4
         )
 
@@ -374,7 +403,7 @@ class Pipeline(acts.examples.Sequencer):
             self.trackingGeometry,
             self.field,
             truthSeedRanges=None,
-            seedFinderConfigArg=seedFinderConfig,
+            # seedFinderConfigArg=seedFinderConfig,
             geoSelectionConfigFile=self.geoSelectionSeeding,
             outputDirRoot=None,
         )
@@ -455,6 +484,12 @@ class Pipeline(acts.examples.Sequencer):
             "modelPath": modelDir / "gnn.pt",
         }
 
+        trkConfig = {
+          "level": acts.logging.DEBUG,
+          "ensure2EdgesPerVertex": self.args["ensure2EdgesPerVertex"] or False,
+          "useDirectedGraph": self.args["useDirectedGraph"] or False,
+        }
+
         for cfg in [metricLearningConfig, filterConfig, gnnConfig]:
             assert cfg["modelPath"].exists()
 
@@ -463,7 +498,7 @@ class Pipeline(acts.examples.Sequencer):
             acts.examples.TorchEdgeClassifier(**filterConfig),
             acts.examples.TorchEdgeClassifier(**gnnConfig),
         ]
-        trackBuilder = acts.examples.BoostTrackBuilding(acts.logging.DEBUG)
+        trackBuilder = acts.examples.BoostTrackBuilding(**trkConfig)
 
         workflow_stem = "gnn_plus_ckf"
         prototrack_key = f"{workflow_stem}_prototracks_before_seeds"
@@ -472,6 +507,7 @@ class Pipeline(acts.examples.Sequencer):
                 level=exatrkxLogLevel,
                 inputSpacePoints="pixel_spacepoints",
                 outputProtoTracks=prototrack_key,
+                outputGraph="exatrkx_graph",
                 inputClusters="clusters",
                 inputSimHits="simhits",
                 inputParticles=self.all_particles_key,
@@ -484,7 +520,18 @@ class Pipeline(acts.examples.Sequencer):
                 zScale=3000.0,
                 clusterXScale=-1.0,
                 clusterYScale=-1.0,
+                targetMinPT=self.args["minPT"],
                 useGPUsParallel=True,
+            )
+        )
+
+        csvOutDir = self.outputDir / workflow_stem
+        csvOutDir.mkdir(exist_ok=True, parents=True)
+        self.addWriter(
+            acts.examples.CsvExaTrkXGraphWriter(
+                level=acts.logging.INFO,
+                inputGraph="exatrkx_graph",
+                outputDir=csvOutDir
             )
         )
 
@@ -494,6 +541,7 @@ class Pipeline(acts.examples.Sequencer):
             self._addProtoTrackEfficiency(prototrack_key)
 
     def _addTrackFindingFromPrototracks(self, prototracks_key, workflow_stem):
+
         csvOutDir = self.outputDir / workflow_stem
         csvOutDir.mkdir(exist_ok=True, parents=True)
 
@@ -502,14 +550,13 @@ class Pipeline(acts.examples.Sequencer):
         pars_key = f"{workflow_stem}_estimated_parameters"
         self.addAlgorithm(
             acts.examples.PrototracksToParsAndSeeds(
-                level=acts.logging.DEBUG,
+                level=acts.logging.INFO,
                 geometry=self.trackingGeometry,
                 inputSpacePoints="pixel_spacepoints",
                 inputProtoTracks=prototracks_key,
                 outputSeeds=seed_key,
                 outputProtoTracks=prototrack_after_seed_key,
                 outputParameters=pars_key,
-                advancedSeeding=self.args["advanced_seeding"],
             )
         )
 
