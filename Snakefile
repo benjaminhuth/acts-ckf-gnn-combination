@@ -1,4 +1,4 @@
-# config: "config/config.yaml"
+configfile: "config/config.yaml"
 
 RECO_TYPES = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept", "truth_kalman"]
 FORMATS = ["csv", "root"]
@@ -27,8 +27,11 @@ rule simulate_data:
     output:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
+    params:
+        events=20,
+        jobs=10,
     shell:
-        "python3 scripts/generate_events.py -n10 -o tmp/simdata"
+        "scripts/generate_events.py"
 
 
 rule inference:
@@ -136,13 +139,19 @@ rule plot_edge_based_metrics:
         "scripts/plot_edge_based_metrics_stages.py"
 
 
-rule computational_performance_plot:
+rule timing_plots:
     input:
-        "tmp/{exatrkx_models}/timing.tsv",
+        "tmp/{exatrkx_models}/timing.tsv"
     output:
-        "plots/{exatrkx_models}/computational_performance.png",
+        "plots/{exatrkx_models}/timinig_plot.png",
     script:
-        "scripts/plot_computaional_perf.py"
+        "scripts/plot_timing.py"
+
+
+rule dummy:
+    input:
+        "plots/no_threshold_2/timinig_plot.png",
+
 
 
 
@@ -158,6 +167,6 @@ rule all:
         expand("plots/{models}/detailed_not_matched_analysis.png", models=MODELS),
         expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
         expand("plots/{models}/edge_metrics_history.png", models=MODELS),
-        "plots/no_threshold_2/computational_performance.png",
-
-
+        expand("plots/{models}/largest_unmatched_prototracks.pdf", models=MODELS),
+        #expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
+        #expand("plots/{models}/edge_metrics_history.png", models=MODELS),

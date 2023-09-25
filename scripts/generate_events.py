@@ -1,42 +1,114 @@
-#!/usr/bin/env python3
-
-import sys
-import os
-import yaml
-import pprint
-import time
-import warnings
-import argparse
-
 from pathlib import Path
-
+import math
+import random
+import string
+import multiprocessing
+import subprocess
+from functools import partial
+import tempfile
+import uproot
+import os
 import numpy as np
 
-from pipeline import Pipeline
 
+def run_geant4_sim(args):
+    outputDir, events, skip = args
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Exa.TrkX data generation/reconstruction script"
+    import acts
+    import acts.examples
+
+    from acts.examples.odd import getOpenDataDetector
+    from acts.examples.simulation import (
+        addPythia8,
+        addGeant4,
+        ParticleSelectorConfig,
     )
 
-    # fmt: off
-    parser.add_argument("--events", "-n", help="how many events to run", type=int, default=1)
-    parser.add_argument("--jobs", "-j", help="parallel jobs", type=int, default=1)
-    parser.add_argument("--output", "-o", help="output path", type=str, default="./output")
-    parser.add_argument("--sim", type=str, choices=["fatras", "geant4"], default="geant4")
-    parser.add_argument("--seed", help="Random seed", type=int, default=42)
-    # fmt: on
+    u = acts.UnitConstants
 
-    args = vars(parser.parse_args())
+    defaultLogLevel = acts.logging.ERROR
+    
+    oddDir = Path(os.environ["ODD_DIR"])
+    assert oddDir.exists()
+    
+    oddMaterialMap = oddDir / "data/odd-material-maps.root"
+    assert oddMaterialMap.exists()
 
-    args["outputDirRoot"] = args["output"]
-    Path(args["output"]).mkdir(exist_ok=True, parents=True)
+    oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
+    detector, trackingGeometry, decorators = getOpenDataDetector(
+        oddDir, mdecorator=oddMaterialDeco, logLevel=defaultLogLevel
+    )
 
-    pipeline = Pipeline(args)
-    pipeline.addSimulation()
-    pipeline.run()
+    field = acts.ConstantBField(acts.Vector3(0.0, 0.0, 2 * u.T))
+    rnd = acts.examples.RandomNumbers(seed=42)
+
+    outputDir.mkdir(exist_ok=True, parents=True)
+    # (outputDir / "csv").mkdir(exist_ok=True, parents=True)
+
+    s = acts.examples.Sequencer(
+        events=events,
+        skip=skip,
+        numThreads=1,
+        outputDir=str(outputDir),
+        trackFpes=False,
+        logLevel=acts.logging.INFO,
+    )
+
+    vtxGen = acts.examples.GaussianVertexGenerator(
+        stddev=acts.Vector4(0.0125 * u.mm, 0.0125 * u.mm, 55.5 * u.mm, 0.0 * u.ns),
+        mean=acts.Vector4(0, 0, 0, 0),
+    )
+
+    addPythia8(
+        s,
+        vtxGen=vtxGen,
+        rnd=rnd,
+        hardProcess=["Top:qqbar2ttbar=on"],
+    )
+
+    addGeant4(
+        s,
+        detector,
+        trackingGeometry,
+        field,
+        postSelectParticles=ParticleSelectorConfig(
+            absZ=(0, 1e4),
+            rho=(0, 1e3),
+            removeNeutral=True,
+        ),
+        outputDirRoot=outputDir,
+        rnd=rnd,
+        killVolume=acts.Volume.makeCylinderVolume(r=1.1 * u.m, halfZ=3.0 * u.m),
+        killAfterTime=25 * u.ns,
+        logLevel=defaultLogLevel,
+    )
+
+    s.run()
 
 
-if __name__ == "__main__":
-    main()
+n_events = snakemake.params["events"]
+jobs = min(snakemake.params["jobs"], n_events)
+output_dir = Path(snakemake.output[0]).parent
+output_dir.mkdir(exist_ok=True, parents=True)
+chunks = np.array_split(np.arange(n_events), jobs)
+
+skips = [c[0] for c in chunks]
+events = [len(c) for c in chunks]
+
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = Path(tmp)
+
+    outdirs = [tmp / f"subdir{i}" for i in range(jobs)]
+
+    with multiprocessing.Pool(jobs) as p:
+        p.map(run_geant4_sim, zip(outdirs, events, skips), 1)
+
+    for filename in [Path(f).name for f in snakemake.output]:
+        files = [d / filename for d in outdirs]
+        subprocess.run(["hadd", output_dir / filename] + files)
+
+# test consistency
+unique_event_ids = np.unique(
+    uproot.open(str(output_dir / "hits.root:hits")).arrays(library="pd").event_id
+)
+assert len(unique_event_ids) == n_events

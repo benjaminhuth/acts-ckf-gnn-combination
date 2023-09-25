@@ -132,13 +132,6 @@ class Pipeline(acts.examples.Sequencer):
             ),
         )
 
-        # This is to avoid problems in simulation
-        self.particlePreSelection = ParticleSelectorConfig(
-            absZ=(0, 1e4),
-            rho=(0, 1e3),
-            removeNeutral=True,
-        )
-
         # For both CKFs:
         self.measurementSelectorCfg = acts.MeasurementSelector.Config(
             [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
@@ -168,7 +161,66 @@ class Pipeline(acts.examples.Sequencer):
         self.hasExaTrkxWorkflow = False
         self.hasProofOfConceptWorkflow = False
 
-    def addDigitizationAndParticleSelection(self):
+
+    def readFromFilesAndDigitize(self):
+        assert not self.hasSimulation
+        self.hasSimulation = True
+
+        inputDir = Path(self.args["input"])
+
+        rootParticlesFile = inputDir / "particles_initial.root"
+        rootHitsFile = inputDir / "hits.root"
+
+        self.all_particles_key = "particles_imported"
+
+        if rootParticlesFile.exists() and rootHitsFile.exists():
+            self.addReader(
+                acts.examples.RootParticleReader(
+                    level=acts.logging.DEBUG,
+                    particleCollection=self.all_particles_key,
+                    filePath=rootParticlesFile,
+                )
+            )
+
+            self.addReader(
+                acts.examples.RootSimHitReader(
+                    level=acts.logging.DEBUG,
+                    filePath=rootHitsFile,
+                    simHitCollection="simhits_imported",
+                )
+            )
+        elif len(list(inputDir.glob("*.csv"))) > 0:
+            self.addReader(
+                acts.examples.CsvParticleReader(
+                    level=acts.logging.DEBUG,
+                    inputStem="particles_initial",
+                    inputDir=inputDir,
+                    outputParticles=self.all_particles_key,
+                )
+            )
+
+            self.addReader(
+                acts.examples.CsvSimHitReader(
+                    level=acts.logging.DEBUG,
+                    inputStem="hits",
+                    inputDir=inputDir,
+                    outputSimHits="simhits_imported",
+                )
+            )
+        else:
+            raise RuntimeError(
+                "found neither root nor csv file in '{}'".format(inputDir)
+            )
+
+        self.addAlgorithm(
+            acts.examples.HitSelector(
+                level=acts.logging.DEBUG,
+                inputHits="simhits_imported",
+                outputHits="simhits",
+                maxTime=25.0 * u.ns,
+            )
+        )
+
         outputDigi = Path(self.args["output"]) / "digi"
         outputDigi.mkdir(exist_ok=True, parents=True)
 
@@ -246,143 +298,81 @@ class Pipeline(acts.examples.Sequencer):
 
         self.addWhiteboardAlias("particles_selected", self.target_particles_key)
 
-    def readFromFiles(self):
-        assert not self.hasSimulation
-        self.hasSimulation = True
-
-        inputDir = Path(self.args["input"])
-
-        rootParticlesFile = inputDir / "particles_initial.root"
-        rootHitsFile = inputDir / "hits.root"
-
-        self.all_particles_key = "particles_imported"
-
-        if rootParticlesFile.exists() and rootHitsFile.exists():
-            self.addReader(
-                acts.examples.RootParticleReader(
-                    level=acts.logging.DEBUG,
-                    particleCollection=self.all_particles_key,
-                    filePath=rootParticlesFile,
-                )
-            )
-
-            self.addReader(
-                acts.examples.RootSimHitReader(
-                    level=acts.logging.DEBUG,
-                    filePath=rootHitsFile,
-                    simHitCollection="simhits_imported",
-                )
-            )
-        elif len(list(inputDir.glob("*.csv"))) > 0:
-            self.addReader(
-                acts.examples.CsvParticleReader(
-                    level=acts.logging.DEBUG,
-                    inputStem="particles_initial",
-                    inputDir=inputDir,
-                    outputParticles=self.all_particles_key,
-                )
-            )
-
-            self.addReader(
-                acts.examples.CsvSimHitReader(
-                    level=acts.logging.DEBUG,
-                    inputStem="hits",
-                    inputDir=inputDir,
-                    outputSimHits="simhits_imported",
-                )
-            )
-        else:
-            raise RuntimeError(
-                "found neither root nor csv file in '{}'".format(inputDir)
-            )
-
-        self.addAlgorithm(
-            acts.examples.HitSelector(
-                level=acts.logging.DEBUG,
-                inputHits="simhits_imported",
-                outputHits="simhits",
-                maxTime=25.0 * u.ns,
-            )
-        )
-
-        if "digi" in self.args:
-            self.addDigitizationAndParticleSelection()
-
-    def addSimulation(self):
-        assert not self.hasSimulation
-        self.hasSimulation = True
-
-        vtxGen = acts.examples.GaussianVertexGenerator(
-            stddev=acts.Vector4(0.0125 * u.mm, 0.0125 * u.mm, 55.5 * u.mm, 0.0 * u.ns),
-            mean=acts.Vector4(0, 0, 0, 0),
-        )
-
-        addPythia8(
-            self,
-            vtxGen=vtxGen,
-            rnd=self.rnd,
-            outputDirCsv=str(self.outputDir / "train_all"),
-            hardProcess=["Top:qqbar2ttbar=on"],
-        )
-
-        self.all_particles_key = "all_particles_initial"
-
-        if self.args["sim"] == "fatras":
-            addFatras(
-                self,
-                self.trackingGeometry,
-                self.field,
-                rnd=self.rnd,
-                preSelectParticles=self.particlePreSelection,
-                postSelectParticles=None,
-                enableInteractions=True,
-                outputDirRoot=self.args["outputDirRoot"],
-                pMin=1 * u.MeV,
-                outputParticlesInitial=self.all_particles_key,
-            )
-        else:
-            addGeant4(
-                self,
-                self.detector,
-                self.trackingGeometry,
-                self.field,
-                preSelectParticles=self.particlePreSelection,
-                postSelectParticles=None,
-                outputDirCsv=None,
-                outputDirRoot=None,
-                rnd=self.rnd,
-                killVolume=acts.Volume.makeCylinderVolume(r=1050, halfZ=3000),
-                keepParticlesWithoutHits=False,
-                outputParticlesInitial=self.all_particles_key,
-            )
-
-        self.addAlgorithm(
-            acts.examples.HitSelector(
-                level=acts.logging.DEBUG,
-                inputHits="simhits",
-                outputHits="simhits_selected",
-                maxTime=25.0 * u.ns,
-            )
-        )
-
-        self.addWriter(
-            acts.examples.RootParticleWriter(
-                level=acts.logging.INFO,
-                inputParticles=self.all_particles_key,
-                filePath=Path(self.args["outputDirRoot"]) / "particles_initial.root",
-            )
-        )
-
-        self.addWriter(
-            acts.examples.RootSimHitWriter(
-                level=acts.logging.INFO,
-                inputSimHits="simhits_selected",
-                filePath=Path(self.args["outputDirRoot"]) / "hits.root",
-            )
-        )
-
-        if "digi" in self.args:
-            self.addDigitizationAndParticleSelection()
+    # def addSimulation(self):
+    #     assert not self.hasSimulation
+    #     self.hasSimulation = True
+    # 
+    #     vtxGen = acts.examples.GaussianVertexGenerator(
+    #         stddev=acts.Vector4(0.0125 * u.mm, 0.0125 * u.mm, 55.5 * u.mm, 0.0 * u.ns),
+    #         mean=acts.Vector4(0, 0, 0, 0),
+    #     )
+    # 
+    #     addPythia8(
+    #         self,
+    #         vtxGen=vtxGen,
+    #         rnd=self.rnd,
+    #         outputDirCsv=str(self.outputDir / "train_all"),
+    #         hardProcess=["Top:qqbar2ttbar=on"],
+    #     )
+    # 
+    #     self.all_particles_key = "all_particles_initial"
+    # 
+    #     if self.args["sim"] == "fatras":
+    #         addFatras(
+    #             self,
+    #             self.trackingGeometry,
+    #             self.field,
+    #             rnd=self.rnd,
+    #             preSelectParticles=self.particlePreSelection,
+    #             postSelectParticles=None,
+    #             enableInteractions=True,
+    #             outputDirRoot=self.args["outputDirRoot"],
+    #             pMin=1 * u.MeV,
+    #             outputParticlesInitial=self.all_particles_key,
+    #         )
+    #     else:
+    #         addGeant4(
+    #             self,
+    #             self.detector,
+    #             self.trackingGeometry,
+    #             self.field,
+    #             preSelectParticles=self.particlePreSelection,
+    #             postSelectParticles=None,
+    #             outputDirCsv=None,
+    #             outputDirRoot=None,
+    #             rnd=self.rnd,
+    #             killVolume=acts.Volume.makeCylinderVolume(r=1050, halfZ=3000),
+    #             keepParticlesWithoutHits=False,
+    #             outputParticlesInitial=self.all_particles_key,
+    #         )
+    # 
+    #     self.addAlgorithm(
+    #         acts.examples.HitSelector(
+    #             level=acts.logging.DEBUG,
+    #             inputHits="simhits",
+    #             outputHits="simhits_selected",
+    #             maxTime=25.0 * u.ns,
+    #         )
+    #     )
+    # 
+    #     self.addWriter(
+    #         acts.examples.RootParticleWriter(
+    #             level=acts.logging.INFO,
+    #             inputParticles=self.all_particles_key,
+    #             filePath=Path(self.args["outputDirRoot"]) / "particles_initial.root",
+    #         )
+    #     )
+    # 
+    #     self.addWriter(
+    #         acts.examples.RootSimHitWriter(
+    #             level=acts.logging.INFO,
+    #             inputSimHits="simhits_selected",
+    #             filePath=Path(self.args["outputDirRoot"]) / "hits.root",
+    #         )
+    #     )
+    # 
+    #     if "digi" in self.args:
+    #         self.addDigitizationAndParticleSelection()
 
     def addDefaultCKF(self):
         assert not self.hasCKF
