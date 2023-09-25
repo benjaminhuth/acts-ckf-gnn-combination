@@ -47,6 +47,7 @@ rule inference:
         "tmp/{exatrkx_models}/digi/event000000000-cells.csv",
         "tmp/{exatrkx_models}/digi/event000000000-spacepoint.csv",
         "tmp/{exatrkx_models}/gnn_plus_ckf/event000000000-prototracks.csv",
+        "tmp/{exatrkx_models}/timing.tsv",
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.exatrkx_models],
@@ -135,6 +136,15 @@ rule plot_edge_based_metrics:
         "scripts/plot_edge_based_metrics_stages.py"
 
 
+rule computational_performance_plot:
+    input:
+        "tmp/{exatrkx_models}/timing.tsv",
+    output:
+        "plots/{exatrkx_models}/computational_performance.png",
+    script:
+        "scripts/plot_computaional_perf.py"
+
+
 
 #MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
 MODELS=["no_threshold_2",]
@@ -148,4 +158,6 @@ rule all:
         expand("plots/{models}/detailed_not_matched_analysis.png", models=MODELS),
         expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
         expand("plots/{models}/edge_metrics_history.png", models=MODELS),
+        "plots/no_threshold_2/computational_performance.png",
+
 
