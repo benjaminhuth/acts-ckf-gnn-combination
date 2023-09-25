@@ -1,5 +1,6 @@
 configfile: "config/config.yaml"
 
+
 RECO_TYPES = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept", "truth_kalman"]
 FORMATS = ["csv", "root"]
 DIGI_CONFIG_FILE = {
@@ -15,7 +16,7 @@ DIGI_MINI_ENERGY_DEPOSIT = {
 TARGET_PT = {
     "no_threshold": 0.5,  # GeV
     "125_thickness": 1.0,  # GeV
-    "no_threshold_2": 1.0, # GeV
+    "no_threshold_2": 1.0,  # GeV
 }
 
 
@@ -122,7 +123,6 @@ rule plot_unmatched_prototracks:
         "scripts/plot_unmatched_prototracks.py"
 
 
-
 rule plot_edge_based_metrics:
     input:
         "tmp/{exatrkx_models}/pyg/event000000000-graph.pyg",
@@ -141,7 +141,7 @@ rule plot_edge_based_metrics:
 
 rule timing_plots:
     input:
-        "tmp/{exatrkx_models}/timing.tsv"
+        "tmp/{exatrkx_models}/timing.tsv",
     output:
         "plots/{exatrkx_models}/timinig_plot.png",
     script:
@@ -153,10 +153,11 @@ rule dummy:
         "plots/no_threshold_2/timinig_plot.png",
 
 
+# MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
+MODELS = [
+    "no_threshold_2",
+]
 
-
-#MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
-MODELS=["no_threshold_2",]
 
 rule all:
     default_target: True
