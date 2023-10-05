@@ -307,13 +307,33 @@ class Pipeline(acts.examples.Sequencer):
 
         self.addWhiteboardAlias("particles_selected", self.target_particles_key)
 
-    def _addRootWriter(self, workflow_stem, trajectories_key, seeds_key):
+    def _addRootWriter(self, workflow_stem, tracks_key, seeds_key):
         """
         Helper function to add Root-based writers for
         - Seeding performance
         - Tracking performance
         - Trajectory Summary
         """
+
+        selected_tracks_key = tracks_key + "_selected"
+        addTrackSelection(
+            self,
+            self.targetTrackSelectorConfig,
+            inputTracks=tracks_key,
+            outputTracks=selected_tracks_key,
+            logLevel=acts.logging.INFO,
+        )
+
+        for key in [full_tracks_key, selected_tracks_key]:
+            traj_key = key + "_trajectories"
+            self.addAlgorithm(
+                acts.examples.TracksToTrajectories(
+                    level=acts.logging.INFO,
+                    inputTracks=key,
+                    outputTrajectories=traj_key,
+                )
+            )
+
         self.addWriter(
             acts.examples.SeedingPerformanceWriter(
                 level=acts.logging.ERROR,
@@ -332,7 +352,7 @@ class Pipeline(acts.examples.Sequencer):
             acts.examples.CKFPerformanceWriter(
                 level=acts.logging.ERROR,
                 inputParticles=self.target_particles_key,
-                inputTrajectories=trajectories_key,
+                inputTrajectories=selected_tracks_key + "_trajectories",
                 inputMeasurementParticlesMap="measurement_particles_map",
                 filePath=self.outputDir / f"performance_{workflow_stem}.root",
                 effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
@@ -348,7 +368,7 @@ class Pipeline(acts.examples.Sequencer):
         self.addWriter(
             acts.examples.RootTrajectorySummaryWriter(
                 level=acts.logging.ERROR,
-                inputTrajectories=trajectories_key,
+                inputTrajectories=tracks_key + "_trajectories",
                 inputParticles=self.target_particles_key,
                 inputMeasurementParticlesMap="measurement_particles_map",
                 filePath=self.outputDir / f"tracksummary_{workflow_stem}.root",
@@ -383,19 +403,25 @@ class Pipeline(acts.examples.Sequencer):
             outputDirRoot=None,
         )
 
-        # internally converts tracks to trajectories
-        addCKFTracks(
-            self,
-            self.trackingGeometry,
-            self.field,
-            trackSelectorConfig=self.targetTrackSelectorConfig,
-            outputDirRoot=None,
+        self.addAlgorithm(
+            acts.examples.TrackFindingAlgorithm(
+                level=acts.logging.INFO,
+                measurementSelectorCfg=self.measurementSelectorCfg
+                trackSelectorCfg=None,
+                inputMeasurements="measurements",
+                inputSourceLinks="sourcelinks",
+                inputInitialTrackParameters="estimatedparameters",
+                outputTracks="ckf_tracks",
+                findTracks=acts.examples.TrackFindingAlgorithm.makeTrackFinderFunction(
+                    trackingGeometry, field, acts.logging.INFO
+                ),
+            )
         )
 
         self._addRootWriter(
             workflow_stem="standard_ckf",
             seeds_key="seeds",
-            trajectories_key="trajectories",
+            tracks_key="ckf_tracks",
         )
 
     def addProofOfConceptWorkflow(self):
@@ -575,26 +601,10 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
-        tracks_selected_key = f"{workflow_stem}_final_tracks_selected"
-        addTrackSelection(
-            self,
-            self.targetTrackSelectorConfig,
-            inputTracks=tracks_key,
-            outputTracks=tracks_selected_key,
-            logLevel=acts.logging.INFO,
-        )
-
-        traj_key = f"{workflow_stem}_final_trajectories_selected"
-        self.addAlgorithm(
-            acts.examples.TracksToTrajectories(
-                level=acts.logging.INFO,
-                inputTracks=tracks_selected_key,
-                outputTrajectories=traj_key,
-            )
-        )
-
         self._addRootWriter(
-            workflow_stem=workflow_stem, seeds_key=seed_key, trajectories_key=traj_key
+            workflow_stem=workflow_stem,
+            seeds_key=seed_key,
+            tracks_key=tracks_key
         )
 
     def _addProtoTrackEfficiency(self, prototracks_key):
