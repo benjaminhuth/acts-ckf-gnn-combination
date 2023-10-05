@@ -17,6 +17,8 @@ from gnn4itk_cf.stages.data_reading import ActsReader
 from gnn4itk_cf.stages.graph_construction.models.utils import build_edges
 from gnn4itk_cf.stages.edge_classifier.models.filter import Filter
 
+DEVICE = "cuda"
+
 def cantor_pairing(a):
     a = np.sort(a, axis=0)
     return a[1] + ((a[0] + a[1]) * (a[0] + a[1] + 1)) // 2
@@ -74,28 +76,69 @@ def remove_duplicates_with_random_flip(edge_index): # From MetricLearing Graph c
     return edge_index
 
 
-DEVICE = "cuda"
 
 # Graph
 graph = torch.load(snakemake.input[0])
 target_mask = (graph.nhits >= snakemake.params["target_min_hits"]) & (graph.pt > snakemake.params["target_min_pt"])
 
 def score_plot(ax, scores, edges):
-    ax.hist(scores.detach().cpu().numpy(), bins=40)
+    scores = scores.detach().cpu().numpy()
 
-    effpur_target  = effpur(graph.track_edges[:,target_mask], edges).values()
-    effpur_all = effpur(graph.track_edges, edges).values()
+    v, bins = np.histogram(scores, bins=40)
+    v = v / max(v)
 
-    ax.set_yscale('log')
+    ax.bar(bins[:-1], v, width=np.diff(bins), color="lightgrey")
 
-    ax.text(0.5,0.5, "target eff={:.2f}, pur={:.2f}".format(*effpur_target), transform=plt.gca().transAxes, ha='center')
-    ax.text(0.5,0.7, "all eff={:.2f}, pur={:.2f}".format(*effpur_all), transform=plt.gca().transAxes, ha='center')
+    eff_all_list = []
+    pur_all_list = []
+    eff_tgt_list = []
+    pur_tgt_list = []
+
+    test_scores = np.linspace(0.0,0.99,50)
+
+    # print("score\ttarget eff\ttarget pur")
+    for score in test_scores:
+        score_edges = edges[ :, scores > score ]
+
+        eff_tgt, pur_tgt = effpur(graph.track_edges[:,target_mask], score_edges).values()
+        eff_tgt_list.append(eff_tgt)
+        pur_tgt_list.append(pur_tgt)
+
+        eff_all, pur_all = effpur(graph.track_edges, score_edges).values()
+        eff_all_list.append(eff_all)
+        pur_all_list.append(pur_all)
+
+        # print(f"{score:.2f}\t{eff_tgt:.3f}\t{pur_tgt:.3f}")
+
+    ax.plot(test_scores, eff_all_list, label="eff all", color="tab:blue")
+    ax.plot(test_scores, pur_all_list, label="pur all", color="tab:blue", ls=":")
+    ax.plot(test_scores, eff_tgt_list, label="eff target", color="tab:orange")
+    ax.plot(test_scores, pur_tgt_list, label="pur target", color="tab:orange", ls=":")
+
+    ax.vlines(0.5, ymin=ax.get_ylim()[0], ymax=ax.get_ylim()[1], ls=":", color="black")
+
+    #ax.set_yscale('log')
+
+    ax.legend(loc='lower right')
+    #ax.text(0.5,0.5, "target eff={:.2f}, pur={:.2f}".format(*effpur_target), transform=plt.gca().transAxes, ha='center')
+    #ax.text(0.5,0.7, "all eff={:.2f}, pur={:.2f}".format(*effpur_all), transform=plt.gca().transAxes, ha='center')
 
 
 # Models
-embeddingModel = torch.jit.load(snakemake.input[1]).to(DEVICE)
-filterModel = torch.jit.load(snakemake.input[2]).to(DEVICE)
-gnnModel = torch.jit.load(snakemake.input[3]).to(DEVICE)
+embeddingModel = torch.jit.load(snakemake.input[1])
+filterModel = torch.jit.load(snakemake.input[2])
+gnnModel = torch.jit.load(snakemake.input[3])
+
+classifier_models = {
+    "filter": filterModel,
+    "GNN": gnnModel
+}
+
+# TODO make this visible to snakemake
+gnnModel2Path = Path(snakemake.input[3]).parent / "gnn2.pt"
+if gnnModel2Path.exists():
+    print("GNN2 found, use it!")
+    classifier_models["GNN2"] = torch.jit.load(gnnModel2Path)
 
 # Features
 x = torch.stack([
@@ -106,51 +149,69 @@ x = torch.stack([
     graph.cell_val,
     graph.lx,
     graph.ly
-]).T.to(torch.float32).to(DEVICE)
+]).T.to(torch.float32)
 
 # Metric learning
-emb = embeddingModel(x.clone()).to(DEVICE)
-edge_index = remove_duplicates_with_random_flip(build_edges(emb, emb, r_max=0.2, k_max=100, backend=""))
+print("Metric learning")
 
-print("Metric learning:")
+with torch.inference_mode():
+    emb = embeddingModel.to(DEVICE)(x.to(DEVICE))
+    edge_index = remove_duplicates_with_random_flip(build_edges(emb, emb, r_max=0.2, k_max=100, backend="")).detach().cpu()
+    del emb
+
 print("- all:", effpur(graph.track_edges, edge_index))
 print("- target:", effpur(graph.track_edges[:, target_mask], edge_index))
 
-# Filter
-filter_scores = torch.sigmoid(filterModel(x[:,:3].clone().float(), edge_index.clone())).detach().cpu()
-filter_edges = edge_index[:, filter_scores > 0.5 ]
+def classify(model, e):
+    with torch.inference_mode():
+        return torch.sigmoid(model.to(DEVICE)(x[:,:3].float().to(DEVICE), e.to(DEVICE))).detach().cpu()
 
-fig, ax = plt.subplots(1, 2, figsize=(8,5))
-score_plot(ax[0], filter_scores, filter_edges)
-ax[0].set_title("Filter scores")
+# Loop over classifier stages
+stage_edge_list = [edge_index]
 
-# GNN
-gnn_scores = torch.sigmoid(gnnModel(x[:,:3].clone(), torch.hstack([filter_edges, filter_edges.flip(0)]))).detach().cpu()
-gnn_scores = gnn_scores[:len(gnn_scores)//2]
+fig, ax = plt.subplots(1, len(classifier_models), figsize=(8,5))
 
-final_edges = filter_edges[:, gnn_scores > 0.5].detach().cpu().numpy()
+for (stage_name, stage_model), ax in zip(classifier_models.items(), ax):
 
-score_plot(ax[1], gnn_scores, final_edges)
-ax[1].set_title("GNN scores")
+    if "GNN" in stage_name:
+        input_edges = torch.hstack([ stage_edge_list[-1], stage_edge_list[-1].flip(0) ])
+    else:
+        input_edges = stage_edge_list[-1]
+
+    scores = classify(stage_model, input_edges)
+
+    if "GNN" in stage_name:
+        scores = scores[:len(scores)//2]
+
+    stage_edge_list.append(stage_edge_list[-1][:, filter_scores > snakemake.params.cuts[0] ])
+
+    print("- all:", effpur(graph.track_edges, stage_edge_list[-1]))
+    print("- target:", effpur(graph.track_edges[:, target_mask], stage_edge_list[-1]))
+
+    score_plot(ax, filter_scores, edge_index)
+    ax.set_title(f"{stage_name} scores")
+
+
 fig.tight_layout()
 fig.savefig(snakemake.output[0])
 
-# Overview
+# Overview plot
+print("Final plot")
 fig, ax = plt.subplots(1,3, figsize=(12,4))
 
-x_vals = [0,1,2]
+x_vals = np.arange(len(stage_edge_list))
 
 ax[0].set_title("Efficiency")
 ax[1].set_title("Purity")
 ax[2].set_title("Graph size")
-ax[2].plot(x_vals, [ e.shape[1] for e in [edge_index, filter_edges, final_edges]], "x-k")
+ax[2].plot(x_vals, [ e.shape[1] for e in stage_edge_list], "x-k")
 
 for true_edges, title in zip([graph.track_edges, graph.track_edges[:, target_mask]],
                                 ["all edges", "target edges"]):
     effs = []
     purs = []
 
-    for x, stage_edges in enumerate([edge_index, filter_edges, final_edges]):
+    for x, stage_edges in enumerate(stage_edge_list):
         eff, pur = effpur(true_edges, stage_edges).values()
         effs.append(eff)
         purs.append(pur)
@@ -164,7 +225,7 @@ for true_edges, title in zip([graph.track_edges, graph.track_edges[:, target_mas
 for a in ax:
     a.legend()
     a.set_xticks(x_vals)
-    a.set_xticklabels(["emb", "flt", "gnn"])
+    a.set_xticklabels(classifier_models.keys())
 
 ax[1].set_yscale('log')
 ax[2].set_yscale('log')

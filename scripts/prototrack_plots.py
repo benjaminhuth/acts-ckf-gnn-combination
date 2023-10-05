@@ -256,7 +256,7 @@ def main():
     ax[0].bar(*np.unique(not_matched.nMeasPixel, return_counts=True))
     ax[0].set_title("# total hits in pixel")
     ax[0].set_ylabel("particle count")
-    ax[0].set_xticks(np.arange(min(not_matched.nMeasPixel), 10))
+    ax[0].set_xticks(np.arange(10))
 
     ax[1].bar(*np.unique(not_matched.nTrackIds, return_counts=True))
     ax[1].set_title("# found hits in pixel\n(in all prototracks)")
@@ -266,7 +266,7 @@ def main():
     ax[2].bar(*np.unique(not_matched.foundMajTrackIds, return_counts=True))
     ax[2].set_title("# found hits in pixel\n(in maj prototrack)")
     ax[2].set_ylabel("particle count")
-    ax[2].set_xticks(np.arange(min(not_matched.foundMajTrackIds), 10))
+    ax[2].set_xticks(np.arange(10))
 
     ax[3].bar(*np.unique(not_matched.nUniqueTrackIds, return_counts=True))
     ax[3].set_title("prototracks per particle")

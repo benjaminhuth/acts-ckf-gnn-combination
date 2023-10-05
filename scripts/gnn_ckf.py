@@ -42,11 +42,12 @@ def main():
     parser.add_argument("--output", "-o", help="output path", type=str, default="./output")
     parser.add_argument("--seed", help="Random seed", type=int, default=42)
     parser.add_argument("--digi", default="mixed")
-    parser.add_argument("--minPT", type=float, default=0.5)
-    parser.add_argument("--minHits", type=int, default=3)
+    parser.add_argument("--targetPT", type=float, default=0.5)
+    parser.add_argument("--targetHitsPixel", type=int, default=3)
+    parser.add_argument("--minHitsTotal", type=int, default=7)
     parser.add_argument("--minEnergyDeposit", type=float, default=0)
-    parser.add_argument("--ensure2EdgesPerVertex", action="store_true")
-    parser.add_argument("--useDirectedGraph", action="store_true")
+    parser.add_argument("--cleanSubgraphs", action="store_true")
+    parser.add_argument('--cuts', nargs='+', type=float, default=[0.5,0.5])
     # fmt: on
 
     args = vars(parser.parse_args())

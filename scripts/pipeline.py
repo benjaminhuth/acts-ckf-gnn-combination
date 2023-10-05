@@ -28,6 +28,12 @@ class NoneDict(dict):
 
 class Pipeline(acts.examples.Sequencer):
     def __init__(self, args):
+        """
+        Constructor:
+        - Initialize geometry, rnd, field etc.
+        - Store save the args to json
+        - Add some global objects needed later on
+        """
         args = NoneDict(args.copy())
         self.args = args
 
@@ -111,12 +117,13 @@ class Pipeline(acts.examples.Sequencer):
             assert os.path.exists(self.digiConfigFile)
 
         # Target Thresholds
-        self.minPT = self.args["minPT"] or 500 * u.MeV
-        self.minHits = self.args["minHits"] or 3
+        self.targetPT = self.args["targetPT"] or 500 * u.MeV
+        self.targetHitsPixel = self.args["targetHitsPixel"] or 3
+        self.minHitsTotal = self.args["minHitsTotal"] or 7
 
         # This selects the tracks we want to look at in the performance plots
         self.targetTrackSelectorConfig = TrackSelectorConfig(
-            pt=(500 * u.MeV, None), nMeasurementsMin=3
+            pt=(self.targetPT, None), nMeasurementsMin=self.minHitsTotal
         )
 
         # These particles are returned to the chain after the simulation.
@@ -125,20 +132,17 @@ class Pipeline(acts.examples.Sequencer):
         # * When doing real inference with GNN, this should only affect the performance writing
         self.targetParticleSelectorConfig = ParticleSelectorConfig(
             removeNeutral=True,
-            pt=(self.minPT, None),
-            measurements=(self.minHits, None),
-            measurementGeometrySelection=acts.examples.readJsonGeometryList(
-                str(self.geoSelectionPixels)
-            ),
+            pt=(self.targetPT, None),
+            measurements=(self.minHitsTotal, None),
+            # measurementGeometrySelection=acts.examples.readJsonGeometryList(
+            #     str(self.geoSelectionPixels)
+            # ),
         )
 
-        # For both CKFs:
+        # For all CKFs:
         self.measurementSelectorCfg = acts.MeasurementSelector.Config(
             [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
         )
-        # self.measurementSelectorCfg = acts.MeasurementSelector.Config(
-        #     [(acts.GeometryIdentifier(), ([], [5.0], [5]))]
-        # )
 
         # Magnetic field
         self.field = acts.ConstantBField(acts.Vector3(0, 0, 2 * u.T))
@@ -161,8 +165,12 @@ class Pipeline(acts.examples.Sequencer):
         self.hasExaTrkxWorkflow = False
         self.hasProofOfConceptWorkflow = False
 
-
     def readFromFilesAndDigitize(self):
+        """
+        Read from CSV or ROOT files and digitize afterwards.
+        Digitized measurements are not read in because this seems a bit unreliable.
+        Also create some collections necessary later on like measurement_particles_map_pixels.
+        """
         assert not self.hasSimulation
         self.hasSimulation = True
 
@@ -232,7 +240,7 @@ class Pipeline(acts.examples.Sequencer):
             outputDirRoot=None,
             outputDirCsv=outputDigi,
             rnd=self.rnd,
-            minEnergyDeposit=self.args["minEnergyDeposit"]
+            minEnergyDeposit=self.args["minEnergyDeposit"],
         )
 
         # Make some event data selection for pixels
@@ -285,12 +293,13 @@ class Pipeline(acts.examples.Sequencer):
 
         self.target_particles_key = "particles_imported_selected"
 
-        # Additionally select particles on momentum, num measurments, ...
+        # Additionally select particles on momentum, num measurments
+        # note: this is in the whole detector
         addParticleSelection(
             self,
             self.targetParticleSelectorConfig,
             inputParticles="particle_selection_from_truth_seeding",
-            inputMeasurementParticlesMap="measurement_particles_map_pixels",
+            inputMeasurementParticlesMap="measurement_particles_map",
             inputMeasurements="measurements",
             outputParticles=self.target_particles_key,
             logLevel=acts.logging.DEBUG,
@@ -298,83 +307,59 @@ class Pipeline(acts.examples.Sequencer):
 
         self.addWhiteboardAlias("particles_selected", self.target_particles_key)
 
-    # def addSimulation(self):
-    #     assert not self.hasSimulation
-    #     self.hasSimulation = True
-    # 
-    #     vtxGen = acts.examples.GaussianVertexGenerator(
-    #         stddev=acts.Vector4(0.0125 * u.mm, 0.0125 * u.mm, 55.5 * u.mm, 0.0 * u.ns),
-    #         mean=acts.Vector4(0, 0, 0, 0),
-    #     )
-    # 
-    #     addPythia8(
-    #         self,
-    #         vtxGen=vtxGen,
-    #         rnd=self.rnd,
-    #         outputDirCsv=str(self.outputDir / "train_all"),
-    #         hardProcess=["Top:qqbar2ttbar=on"],
-    #     )
-    # 
-    #     self.all_particles_key = "all_particles_initial"
-    # 
-    #     if self.args["sim"] == "fatras":
-    #         addFatras(
-    #             self,
-    #             self.trackingGeometry,
-    #             self.field,
-    #             rnd=self.rnd,
-    #             preSelectParticles=self.particlePreSelection,
-    #             postSelectParticles=None,
-    #             enableInteractions=True,
-    #             outputDirRoot=self.args["outputDirRoot"],
-    #             pMin=1 * u.MeV,
-    #             outputParticlesInitial=self.all_particles_key,
-    #         )
-    #     else:
-    #         addGeant4(
-    #             self,
-    #             self.detector,
-    #             self.trackingGeometry,
-    #             self.field,
-    #             preSelectParticles=self.particlePreSelection,
-    #             postSelectParticles=None,
-    #             outputDirCsv=None,
-    #             outputDirRoot=None,
-    #             rnd=self.rnd,
-    #             killVolume=acts.Volume.makeCylinderVolume(r=1050, halfZ=3000),
-    #             keepParticlesWithoutHits=False,
-    #             outputParticlesInitial=self.all_particles_key,
-    #         )
-    # 
-    #     self.addAlgorithm(
-    #         acts.examples.HitSelector(
-    #             level=acts.logging.DEBUG,
-    #             inputHits="simhits",
-    #             outputHits="simhits_selected",
-    #             maxTime=25.0 * u.ns,
-    #         )
-    #     )
-    # 
-    #     self.addWriter(
-    #         acts.examples.RootParticleWriter(
-    #             level=acts.logging.INFO,
-    #             inputParticles=self.all_particles_key,
-    #             filePath=Path(self.args["outputDirRoot"]) / "particles_initial.root",
-    #         )
-    #     )
-    # 
-    #     self.addWriter(
-    #         acts.examples.RootSimHitWriter(
-    #             level=acts.logging.INFO,
-    #             inputSimHits="simhits_selected",
-    #             filePath=Path(self.args["outputDirRoot"]) / "hits.root",
-    #         )
-    #     )
-    # 
-    #     if "digi" in self.args:
-    #         self.addDigitizationAndParticleSelection()
+    def _addRootWriter(self, workflow_stem, trajectories_key, seeds_key):
+        """
+        Helper function to add Root-based writers for
+        - Seeding performance
+        - Tracking performance
+        - Trajectory Summary
+        """
+        self.addWriter(
+            acts.examples.SeedingPerformanceWriter(
+                level=acts.logging.ERROR,
+                inputParticles=self.target_particles_key,
+                inputSeeds=seeds_key,
+                inputMeasurementParticlesMap="measurement_particles_map",
+                filePath=self.outputDir / f"seeding_performance_{workflow_stem}.root",
+                effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
+                duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
+                    self.binningCfg
+                ),
+            )
+        )
+
+        self.addWriter(
+            acts.examples.CKFPerformanceWriter(
+                level=acts.logging.ERROR,
+                inputParticles=self.target_particles_key,
+                inputTrajectories=trajectories_key,
+                inputMeasurementParticlesMap="measurement_particles_map",
+                filePath=self.outputDir / f"performance_{workflow_stem}.root",
+                effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
+                duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
+                    self.binningCfg
+                ),
+                fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
+                    self.binningCfg
+                ),
+            )
+        )
+
+        self.addWriter(
+            acts.examples.RootTrajectorySummaryWriter(
+                level=acts.logging.ERROR,
+                inputTrajectories=trajectories_key,
+                inputParticles=self.target_particles_key,
+                inputMeasurementParticlesMap="measurement_particles_map",
+                filePath=self.outputDir / f"tracksummary_{workflow_stem}.root",
+                treeName="tracksummary",
+            )
+        )
 
     def addDefaultCKF(self):
+        """
+        Add the default CKF to the chain, including root writers
+        """
         assert not self.hasCKF
         self.hasCKF = True
 
@@ -384,7 +369,7 @@ class Pipeline(acts.examples.Sequencer):
             # sigmaScattering=7.3401486140533985,
             # radLengthPerSeed=0.06311548593790932,
             # maxSeedsPerSpM=0,
-            cotThetaMax=10.01788, #16.541921673890172,
+            cotThetaMax=10.01788,  # 16.541921673890172,
             # cotThetaMax=27.310 # eta = 4
         )
 
@@ -407,24 +392,16 @@ class Pipeline(acts.examples.Sequencer):
             outputDirRoot=None,
         )
 
-        self.addWriter(
-            acts.examples.CKFPerformanceWriter(
-                level=acts.logging.ERROR,
-                inputParticles=self.target_particles_key,
-                inputTrajectories="trajectories",
-                inputMeasurementParticlesMap="measurement_particles_map",
-                filePath=str(self.outputDir / ("performance_standard_ckf.root")),
-                effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
-                duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
-                    self.binningCfg
-                ),
-                fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
-                    self.binningCfg
-                ),
-            )
+        self._addRootWriter(
+            workflow_stem="standard_ckf",
+            seeds_key="seeds",
+            trajectories_key="trajectories",
         )
 
     def addProofOfConceptWorkflow(self):
+        """
+        Add the proof of concept workflow.
+        """
         assert not self.hasProofOfConceptWorkflow
         self.hasProofOfConceptWorkflow = True
 
@@ -442,6 +419,9 @@ class Pipeline(acts.examples.Sequencer):
         self._addTrackFindingFromPrototracks(prototrack_key, workflow_stem)
 
     def addExaTrkXWorkflow(self, add_eff_printer=False):
+        """
+        Add the exatrkx-based workflow.
+        """
         assert not self.hasExaTrkxWorkflow
         self.hasExaTrkxWorkflow = True
 
@@ -457,36 +437,40 @@ class Pipeline(acts.examples.Sequencer):
             "knnVal": 100,
         }
 
-        filterConfig = {
-            "level": exatrkxLogLevel,
-            "numFeatures": 3,
-            "cut": 0.5,
-            "modelPath": modelDir / "filter.pt",
-            "nChunks": 0,  # 12,
-            "undirected": True,
-        }
+        modelPaths = [modelDir / "filter.pt", modelDir / "gnn.pt"]
+        if (modelDir / "gnn2.pt").exists():
+            modelPaths.append(modelDir / "gnn2.pt")
 
-        gnnConfig = {
-            "level": exatrkxLogLevel,
-            "numFeatures": 3,
-            "cut": 0.5,
-            "undirected": True,
-            "modelPath": modelDir / "gnn.pt",
-        }
+        if "cuts" in self.args:
+            cuts = self.args["cuts"]
+            assert len(cuts) == len(modelPaths)
+        else:
+            cuts = len(modelPaths) * [
+                0.5,
+            ]
+
+        clfConfigs = []
+        for path, cut in zip(modelPaths, cuts):
+            assert path.exists()
+            clfConfigs.append(
+                {
+                    "level": exatrkxLogLevel,
+                    "numFeatures": 3,
+                    "cut": cut,
+                    "modelPath": str(path),
+                    "nChunks": 0,
+                    "undirected": True,
+                }
+            )
 
         trkConfig = {
-          "level": acts.logging.DEBUG,
-          "ensure2EdgesPerVertex": self.args["ensure2EdgesPerVertex"] or False,
-          "useDirectedGraph": self.args["useDirectedGraph"] or False,
+            "level": acts.logging.VERBOSE,
+            "cleanSubgraphs": self.args["cleanSubgraphs"] or False,
         }
-
-        for cfg in [metricLearningConfig, filterConfig, gnnConfig]:
-            assert cfg["modelPath"].exists()
 
         graphConstructor = acts.examples.TorchMetricLearning(**metricLearningConfig)
         edgeClassifiers = [
-            acts.examples.TorchEdgeClassifier(**filterConfig),
-            acts.examples.TorchEdgeClassifier(**gnnConfig),
+            acts.examples.TorchEdgeClassifier(**cfg) for cfg in clfConfigs
         ]
         trackBuilder = acts.examples.BoostTrackBuilding(**trkConfig)
 
@@ -510,7 +494,7 @@ class Pipeline(acts.examples.Sequencer):
                 zScale=3000.0,
                 clusterXScale=-1.0,
                 clusterYScale=-1.0,
-                targetMinPT=self.args["minPT"],
+                targetMinPT=self.targetPT,
                 useGPUsParallel=True,
             )
         )
@@ -519,9 +503,7 @@ class Pipeline(acts.examples.Sequencer):
         csvOutDir.mkdir(exist_ok=True, parents=True)
         self.addWriter(
             acts.examples.CsvExaTrkXGraphWriter(
-                level=acts.logging.INFO,
-                inputGraph="exatrkx_graph",
-                outputDir=csvOutDir
+                level=acts.logging.INFO, inputGraph="exatrkx_graph", outputDir=csvOutDir
             )
         )
 
@@ -531,13 +513,17 @@ class Pipeline(acts.examples.Sequencer):
             self._addProtoTrackEfficiency(prototrack_key)
 
     def _addTrackFindingFromPrototracks(self, prototracks_key, workflow_stem):
-
+        """
+        Internal helper function to add the trackfinding for prototracks.
+        Used both in proof-of-concept workflow and GNN-based workflow
+        """
         csvOutDir = self.outputDir / workflow_stem
         csvOutDir.mkdir(exist_ok=True, parents=True)
 
         seed_key = f"{workflow_stem}_seeds_from_prototracks"
         prototrack_after_seed_key = f"{workflow_stem}_exatrkx_prototracks_after_seeds"
         pars_key = f"{workflow_stem}_estimated_parameters"
+
         self.addAlgorithm(
             acts.examples.PrototracksToParsAndSeeds(
                 level=acts.logging.INFO,
@@ -547,6 +533,7 @@ class Pipeline(acts.examples.Sequencer):
                 outputSeeds=seed_key,
                 outputProtoTracks=prototrack_after_seed_key,
                 outputParameters=pars_key,
+                buildTightSeeds=False,
             )
         )
 
@@ -606,26 +593,14 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
-        self.addWriter(
-            acts.examples.CKFPerformanceWriter(
-                level=acts.logging.INFO,
-                inputParticles=self.target_particles_key,
-                inputTrajectories=traj_key,
-                inputMeasurementParticlesMap="measurement_particles_map",
-                filePath=str(
-                    self.outputDir / ("performance_" + workflow_stem + ".root")
-                ),
-                effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
-                duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
-                    self.binningCfg
-                ),
-                fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
-                    self.binningCfg
-                ),
-            )
+        self._addRootWriter(
+            workflow_stem=workflow_stem, seeds_key=seed_key, trajectories_key=traj_key
         )
 
     def _addProtoTrackEfficiency(self, prototracks_key):
+        """
+        Add an algorithm that prints some histograms for prototrack performance
+        """
         self.addAlgorithm(
             acts.examples.TruthTrackFinder(
                 level=acts.logging.INFO,
@@ -645,6 +620,9 @@ class Pipeline(acts.examples.Sequencer):
         )
 
     def addTruthTrackingKalman(self):
+        """
+        Add a truth tracking workflow based on the kalman filter
+        """
         self.addAlgorithm(
             acts.examples.TruthSeedingAlgorithm(
                 level=acts.logging.ERROR,

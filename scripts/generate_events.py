@@ -13,6 +13,7 @@ import numpy as np
 
 def run_geant4_sim(args):
     outputDir, events, skip = args
+    outputDir.mkdir(exist_ok=True, parents=True)
 
     import acts
     import acts.examples
@@ -28,9 +29,18 @@ def run_geant4_sim(args):
 
     defaultLogLevel = acts.logging.ERROR
     
-    oddDir = Path(os.environ["ODD_DIR"])
+    if not "ODD_DIR" in os.environ:
+        for d in [
+            Path("/home/benjamin/Documents/acts_project/acts"),
+            Path("/home/iwsatlas1/bhuth/acts"),
+        ]:
+            if d.exists():
+                acts_root = d
+        oddDir = acts_root / "thirdparty/OpenDataDetector"
+    else:
+        oddDir = Path(os.environ["ODD_DIR"])
     assert oddDir.exists()
-    
+
     oddMaterialMap = oddDir / "data/odd-material-maps.root"
     assert oddMaterialMap.exists()
 
@@ -62,6 +72,8 @@ def run_geant4_sim(args):
     addPythia8(
         s,
         vtxGen=vtxGen,
+        nhard = 1,
+        npileup = 200,
         rnd=rnd,
         hardProcess=["Top:qqbar2ttbar=on"],
     )
@@ -71,7 +83,7 @@ def run_geant4_sim(args):
         detector,
         trackingGeometry,
         field,
-        postSelectParticles=ParticleSelectorConfig(
+        preSelectParticles=ParticleSelectorConfig(
             absZ=(0, 1e4),
             rho=(0, 1e3),
             removeNeutral=True,

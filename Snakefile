@@ -2,23 +2,18 @@ configfile: "config/config.yaml"
 
 
 RECO_TYPES = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept", "truth_kalman"]
+RECO_TYPES_NO_TT = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept"]
 FORMATS = ["csv", "root"]
 DIGI_CONFIG_FILE = {
-    "no_threshold": "detector/odd-digi-mixed-config-exact.json",
     "125_thickness": "detector/odd-digi-mixed-config-125thickness.json",
     "no_threshold_2": "detector/odd-digi-mixed-config-exact-125thickness.json",
+    "high_eff": "detector/odd-digi-mixed-config-125thickness.json",
 }
-DIGI_MINI_ENERGY_DEPOSIT = {
-    "no_threshold": 0.0,
-    "125_thickness": 3.65e-06,  # in GeV, 1000 * 3.65 * u.eV
-    "no_threshold_2": 3.65e-06,  # in GeV, 1000 * 3.65 * u.eV
+CLASSIFIER_CUTS = {
+    "125_thickness": [0.5, 0.5],
+    "no_threshold_2": [0.5, 0.5],
+    "high_eff": [0.05, 0.01, 0.5],
 }
-TARGET_PT = {
-    "no_threshold": 0.5,  # GeV
-    "125_thickness": 1.0,  # GeV
-    "no_threshold_2": 1.0,  # GeV
-}
-
 
 envvars:
     "CUDA_VISIBLE_DEVICES",
@@ -31,7 +26,7 @@ rule simulate_data:
     params:
         events=20,
         jobs=10,
-    shell:
+    script:
         "scripts/generate_events.py"
 
 
@@ -46,24 +41,47 @@ rule inference:
             type=RECO_TYPES,
             ext=FORMATS,
         ),
+        expand(
+            "tmp/{{exatrkx_models}}/seeding_performance_{type}.root",
+            type=RECO_TYPES_NO_TT,
+        ),
+        expand(
+            "tmp/{{exatrkx_models}}/tracksummary_{type}.root",
+            type=RECO_TYPES_NO_TT,
+        ),
         "tmp/{exatrkx_models}/digi/event000000000-measurements.csv",
         "tmp/{exatrkx_models}/digi/event000000000-measurement-simhit-map.csv",
         "tmp/{exatrkx_models}/digi/event000000000-cells.csv",
         "tmp/{exatrkx_models}/digi/event000000000-spacepoint.csv",
+        "tmp/{exatrkx_models}/gnn_plus_ckf/event000000000-exatrkx-graph.csv",
         "tmp/{exatrkx_models}/gnn_plus_ckf/event000000000-prototracks.csv",
         "tmp/{exatrkx_models}/timing.tsv",
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.exatrkx_models],
-        min_energy_deposit=lambda wildcards: DIGI_MINI_ENERGY_DEPOSIT[
-            wildcards.exatrkx_models
-        ],
-        target_pt=lambda wildcards: TARGET_PT[wildcards.exatrkx_models],
+        cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
-        "python3 scripts/gnn_ckf.py -n7 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
+        "python3 scripts/gnn_ckf.py -n10 -j-1 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
         "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
-        "--minEnergyDeposit={params.min_energy_deposit} --minPT={params.target_pt}"
+        "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts}"
+
+
+rule inference_cpu:
+    input:
+        "tmp/simdata/particles_initial.root",
+        "tmp/simdata/hits.root",
+        "torchscript/{exatrkx_models}/gnn.pt",
+    output:
+        "tmp/{exatrkx_models}/cpu/timing.tsv",
+    params:
+        digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.exatrkx_models],
+        cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
+    shell:
+        "CUDA_VISIBLE_DEVICES='' "
+        "python3 scripts/gnn_ckf.py -n5 -j5 -o tmp/{wildcards.exatrkx_models}/cpu -i tmp/simdata "
+        "-gnn --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
+        "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts}"
 
 
 rule performance_plots:
@@ -72,7 +90,24 @@ rule performance_plots:
     output:
         "plots/{exatrkx_models}/perf_plots.png",
     script:
-        "scripts/perf_plots.py"
+        "scripts/make_perf_plots.py"
+
+rule seeding_plots:
+    input:
+        expand(
+            "tmp/{{exatrkx_models}}/seeding_performance_{type}.root",
+            type=RECO_TYPES_NO_TT,
+        ),
+        expand(
+            "tmp/{{exatrkx_models}}/tracksummary_{type}.root",
+            type=RECO_TYPES_NO_TT,
+        ),
+    output:
+        "tmp/{exatrkx_models}/seeding_table.csv",
+        "plots/{exatrkx_models}/seeding_table.png",
+        "plots/{exatrkx_models}/seeding_plot.png",
+    script:
+        "scripts/make_seeding_plots.py"
 
 
 rule prototrack_based_plots:
@@ -134,7 +169,8 @@ rule plot_edge_based_metrics:
         "plots/{exatrkx_models}/edge_metrics_history.png",
     params:
         target_min_hits=3,
-        target_min_pt=lambda wildcards: TARGET_PT[wildcards.exatrkx_models],
+        target_min_pt=1.0,
+        cuts=lambda wildcards: CLASSIFIER_CUTS[wildcards.exatrkx_models],
     script:
         "scripts/plot_edge_based_metrics_stages.py"
 
@@ -142,26 +178,30 @@ rule plot_edge_based_metrics:
 rule timing_plots:
     input:
         "tmp/{exatrkx_models}/timing.tsv",
+        "tmp/{exatrkx_models}/cpu/timing.tsv",
     output:
         "plots/{exatrkx_models}/timinig_plot.png",
+        "plots/{exatrkx_models}/timinig_plot_detail.png",
     script:
         "scripts/plot_timing.py"
 
 
-rule dummy:
-    input:
-        "plots/no_threshold_2/timinig_plot.png",
-
-
 # MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
-MODELS = [
-    "no_threshold_2",
-]
+MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
 
+
+rule cross_perf_plots:
+    input:
+        expand("tmp/{models}/performance_gnn_plus_ckf.root", models=MODELS),
+    output:
+        "plots/crosscomp/perf_cross_comparison.png",
+    script:
+        "scripts/make_perf_cross_comparison.py"
 
 rule all:
     default_target: True
     input:
+        "plots/crosscomp/perf_cross_comparison.png",
         expand("plots/{models}/perf_plots.png", models=MODELS),
         expand("plots/{models}/detailed_matching_hist.png", models=MODELS),
         expand("plots/{models}/detailed_matching_eff.png", models=MODELS),
@@ -169,5 +209,6 @@ rule all:
         expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
         expand("plots/{models}/edge_metrics_history.png", models=MODELS),
         expand("plots/{models}/largest_unmatched_prototracks.pdf", models=MODELS),
-        #expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
-        #expand("plots/{models}/edge_metrics_history.png", models=MODELS),
+#         expand("plots/{models}/timinig_plot.png", models=MODELS),
+#         expand("plots/{models}/timinig_plot_detail.png", models=MODELS),
+        expand("plots/{models}/seeding_plot.png", models=MODELS),
