@@ -17,7 +17,7 @@ from gnn4itk_cf.stages.data_reading import ActsReader
 from gnn4itk_cf.stages.graph_construction.models.utils import build_edges
 from gnn4itk_cf.stages.edge_classifier.models.filter import Filter
 
-DEVICE = "cuda"
+DEVICE = "cpu" if os.environ["CUDA_VISIBLE_DEVICES"] == "" else "cuda"
 
 def cantor_pairing(a):
     a = np.sort(a, axis=0)
@@ -77,9 +77,21 @@ def remove_duplicates_with_random_flip(edge_index): # From MetricLearing Graph c
 
 
 
+# Workaround because we must call this from shell
+class Snakemake:
+    input = os.environ["SNAKEMAKE_INPUT"].split()
+    output = os.environ["SNAKEMAKE_OUTPUT"].split()
+    
+target_min_hits = int(os.environ["TARGET_MIN_HITS"])
+target_min_pt = float(os.environ["TARGET_MIN_PT"])
+cuts = [ float(c) for c in os.environ["CUTS"].split() ]
+
+
+snakemake = Snakemake()
+
 # Graph
 graph = torch.load(snakemake.input[0])
-target_mask = (graph.nhits >= snakemake.params["target_min_hits"]) & (graph.pt > snakemake.params["target_min_pt"])
+target_mask = (graph.nhits >= target_min_hits) & (graph.pt > target_min_pt)
 
 def score_plot(ax, scores, edges):
     scores = scores.detach().cpu().numpy()
@@ -172,6 +184,7 @@ stage_edge_list = [edge_index]
 fig, ax = plt.subplots(1, len(classifier_models), figsize=(8,5))
 
 for (stage_name, stage_model), ax in zip(classifier_models.items(), ax):
+    print(stage_name)
 
     if "GNN" in stage_name:
         input_edges = torch.hstack([ stage_edge_list[-1], stage_edge_list[-1].flip(0) ])
@@ -183,12 +196,13 @@ for (stage_name, stage_model), ax in zip(classifier_models.items(), ax):
     if "GNN" in stage_name:
         scores = scores[:len(scores)//2]
 
-    stage_edge_list.append(stage_edge_list[-1][:, filter_scores > snakemake.params.cuts[0] ])
+    stage_edge_list.append(stage_edge_list[-1][:, scores > cuts[0] ])
 
     print("- all:", effpur(graph.track_edges, stage_edge_list[-1]))
     print("- target:", effpur(graph.track_edges[:, target_mask], stage_edge_list[-1]))
 
-    score_plot(ax, filter_scores, edge_index)
+    assert len(scores) == stage_edge_list[-2].shape[1]
+    score_plot(ax, scores, stage_edge_list[-2])
     ax.set_title(f"{stage_name} scores")
 
 
@@ -225,7 +239,7 @@ for true_edges, title in zip([graph.track_edges, graph.track_edges[:, target_mas
 for a in ax:
     a.legend()
     a.set_xticks(x_vals)
-    a.set_xticklabels(classifier_models.keys())
+    a.set_xticklabels(["emb",] + list(classifier_models.keys()))
 
 ax[1].set_yscale('log')
 ax[2].set_yscale('log')

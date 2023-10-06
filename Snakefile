@@ -35,6 +35,8 @@ rule inference:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
         "torchscript/{exatrkx_models}/gnn.pt",
+    log: 
+        "tmp/{exatrkx_models}/logs/inference.log",
     output:
         expand(
             "tmp/{{exatrkx_models}}/performance_{type}.{ext}",
@@ -62,9 +64,9 @@ rule inference:
         cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
-        "python3 scripts/gnn_ckf.py -n10 -j-1 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
+        "python3 scripts/gnn_ckf.py -n1 -j1 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
         "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
-        "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts}"
+        "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts} 2>&1 | tee {log}"
 
 
 rule inference_cpu:
@@ -138,8 +140,11 @@ rule make_pyg:
         "tmp/{exatrkx_models}/digi/event000000000-cells.csv",
     output:
         "tmp/{exatrkx_models}/pyg/event000000000-graph.pyg",
-    script:
-        "scripts/make_pyg.py"
+    shell:
+        "SNAKEMAKE_INPUT='{input}' "
+        "SNAKEMAKE_OUTPUT='{output}' "
+        "LD_LIBRARY_PATH='' "
+        "python scripts/make_pyg.py"
 
 
 rule plot_unmatched_prototracks:
@@ -171,8 +176,14 @@ rule plot_edge_based_metrics:
         target_min_hits=3,
         target_min_pt=1.0,
         cuts=lambda wildcards: CLASSIFIER_CUTS[wildcards.exatrkx_models],
-    script:
-        "scripts/plot_edge_based_metrics_stages.py"
+    shell:
+        "SNAKEMAKE_INPUT='{input}' "
+        "SNAKEMAKE_OUTPUT='{output}' "
+        "TARGET_MIN_PT='{params.target_min_pt}' "
+        "TARGET_MIN_HITS='{params.target_min_hits}' "
+        "CUTS='{params.cuts}' "
+        "LD_LIBRARY_PATH='' "
+        "python scripts/plot_edge_based_metrics_stages.py"
 
 
 rule timing_plots:
@@ -187,8 +198,8 @@ rule timing_plots:
 
 
 # MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
-MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
-
+# MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
+MODELS = ["high_eff",]
 
 rule cross_perf_plots:
     input:

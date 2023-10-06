@@ -44,6 +44,12 @@ class ModifiedActsReader(ActsReader):
 
         super().__init__(cfg)
 
+# Workaround because we must call this from shell
+class Snakemake:
+    input = os.environ["SNAKEMAKE_INPUT"].split()
+    output = os.environ["SNAKEMAKE_OUTPUT"].split()
+
+snakemake = Snakemake()
 
 with tempfile.TemporaryDirectory() as tmp:
     cfg = yaml.load(open(snakemake.input[0], "r"), Loader=yaml.FullLoader)

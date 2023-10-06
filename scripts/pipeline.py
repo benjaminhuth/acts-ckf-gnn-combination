@@ -184,7 +184,7 @@ class Pipeline(acts.examples.Sequencer):
         if rootParticlesFile.exists() and rootHitsFile.exists():
             self.addReader(
                 acts.examples.RootParticleReader(
-                    level=acts.logging.DEBUG,
+                    level=acts.logging.INFO,
                     particleCollection=self.all_particles_key,
                     filePath=rootParticlesFile,
                 )
@@ -192,7 +192,7 @@ class Pipeline(acts.examples.Sequencer):
 
             self.addReader(
                 acts.examples.RootSimHitReader(
-                    level=acts.logging.DEBUG,
+                    level=acts.logging.INFO,
                     filePath=rootHitsFile,
                     simHitCollection="simhits_imported",
                 )
@@ -200,7 +200,7 @@ class Pipeline(acts.examples.Sequencer):
         elif len(list(inputDir.glob("*.csv"))) > 0:
             self.addReader(
                 acts.examples.CsvParticleReader(
-                    level=acts.logging.DEBUG,
+                    level=acts.logging.INFO,
                     inputStem="particles_initial",
                     inputDir=inputDir,
                     outputParticles=self.all_particles_key,
@@ -209,7 +209,7 @@ class Pipeline(acts.examples.Sequencer):
 
             self.addReader(
                 acts.examples.CsvSimHitReader(
-                    level=acts.logging.DEBUG,
+                    level=acts.logging.INFO,
                     inputStem="hits",
                     inputDir=inputDir,
                     outputSimHits="simhits_imported",
@@ -222,7 +222,7 @@ class Pipeline(acts.examples.Sequencer):
 
         self.addAlgorithm(
             acts.examples.HitSelector(
-                level=acts.logging.DEBUG,
+                level=acts.logging.INFO,
                 inputHits="simhits_imported",
                 outputHits="simhits",
                 maxTime=25.0 * u.ns,
@@ -302,7 +302,7 @@ class Pipeline(acts.examples.Sequencer):
             inputMeasurementParticlesMap="measurement_particles_map",
             inputMeasurements="measurements",
             outputParticles=self.target_particles_key,
-            logLevel=acts.logging.DEBUG,
+            logLevel=acts.logging.INFO,
         )
 
         self.addWhiteboardAlias("particles_selected", self.target_particles_key)
@@ -464,7 +464,7 @@ class Pipeline(acts.examples.Sequencer):
             )
 
         trkConfig = {
-            "level": acts.logging.VERBOSE,
+            "level": acts.logging.INFO,
             "cleanSubgraphs": self.args["cleanSubgraphs"] or False,
         }
 
@@ -558,7 +558,7 @@ class Pipeline(acts.examples.Sequencer):
         tracks_key = f"{workflow_stem}_final_tracks"
         self.addAlgorithm(
             acts.examples.TrackFindingFromPrototrackAlgorithm(
-                level=acts.logging.DEBUG,
+                level=acts.logging.INFO,
                 inputProtoTracks=prototrack_after_seed_key,
                 inputMeasurements="measurements",
                 inputSourceLinks="sourcelinks",
@@ -581,7 +581,7 @@ class Pipeline(acts.examples.Sequencer):
             self.targetTrackSelectorConfig,
             inputTracks=tracks_key,
             outputTracks=tracks_selected_key,
-            logLevel=acts.logging.INFO,
+            logLevel=acts.logging.DEBUG, # To see new size
         )
 
         traj_key = f"{workflow_stem}_final_trajectories_selected"
@@ -607,7 +607,7 @@ class Pipeline(acts.examples.Sequencer):
                 inputParticles=self.target_particles_key,
                 inputMeasurementParticlesMap="measurement_particles_map_pixels",
                 outputProtoTracks="truth_prototracks_for_eff",
-                minHits=self.minHits,
+                minHits=3,
             )
         )
 

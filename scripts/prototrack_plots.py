@@ -319,7 +319,8 @@ def main():
 
     fig.tight_layout()
     fig.savefig(snakemake.output[2])
-    plt.show()
+    
+    # plt.show()
 
 
 main()
