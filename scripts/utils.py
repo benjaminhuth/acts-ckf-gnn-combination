@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 def plotTEfficency(tefficency, ax, **errorbar_kwargs):
     th1 = tefficency.GetTotalHistogram()
@@ -21,3 +22,9 @@ def plotTEfficency(tefficency, ax, **errorbar_kwargs):
         x, y, yerr=(y_err_lo, y_err_hi), xerr=(x_err_lo, x_err_hi), **errorbar_kwargs
     )
     return ax
+
+
+def subplots(nrow, ncol, snakemake):
+    plt.rcParams.update({"font.size": snakemake.config["plot_fontsize"]})
+    figsize = ncol*snakemake.config["plot_width"], nrow*snakemake.config["plot_height"]
+    return plt.subplots(nrow, ncol, figsize=figsize)

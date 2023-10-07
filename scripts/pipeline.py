@@ -153,8 +153,8 @@ class Pipeline(acts.examples.Sequencer):
 
         # Binning cfg for plots
         self.binningCfg = {
-            "Pt": acts.examples.Binning("pT [GeV/c]", list(np.logspace(-2, 2, 40))),
-            "Eta": acts.examples.Binning("#eta", 40, -4, 4),
+            "Pt": acts.examples.Binning("pT [GeV/c]", list(np.logspace(-1, 2, 25))),
+            "Eta": acts.examples.Binning("#eta", 25, -3.5, 3.5),
             "Phi": acts.examples.Binning("#phi", 100, -3.15, 3.15),
             "Num": acts.examples.Binning("N", 30, -0.5, 29.5),
         }
@@ -556,9 +556,11 @@ class Pipeline(acts.examples.Sequencer):
         )
 
         tracks_key = f"{workflow_stem}_final_tracks"
+        tag = ''.join([ p[0] for p in workflow_stem.split('_') ])
         self.addAlgorithm(
             acts.examples.TrackFindingFromPrototrackAlgorithm(
                 level=acts.logging.INFO,
+                tag=tag,
                 inputProtoTracks=prototrack_after_seed_key,
                 inputMeasurements="measurements",
                 inputSourceLinks="sourcelinks",

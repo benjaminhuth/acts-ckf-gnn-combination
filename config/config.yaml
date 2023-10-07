@@ -1,1 +1,7 @@
+nevents: 3
+njobs: 10
+
 plt_show: False #True
+plot_width: 6
+plot_height: 4.5
+plot_fontsize: 14

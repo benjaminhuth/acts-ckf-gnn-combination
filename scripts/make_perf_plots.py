@@ -7,16 +7,15 @@ import matplotlib
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+import utils
 from utils import plotTEfficency
-
-plt.rcParams.update({"font.size": 12})
 
 performance_ckf = ROOT.TFile.Open(snakemake.input[0])
 performance_gnn_ckf = ROOT.TFile.Open(snakemake.input[1])
 performance_proof_of_concept = ROOT.TFile.Open(snakemake.input[2])
 performance_truth_kalman = ROOT.TFile.Open(snakemake.input[3])
 
-fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+fig, axes = utils.subplots(2, 3, snakemake)
 
 plot_keys = [
     "trackeff_vs_eta",
@@ -55,16 +54,21 @@ for ax, key in zip(axes.flatten(), plot_keys):
 
     if "_pT" in key:
         ax.set_xscale("log")
-        ax.set_xlim(0.9e-1, 1.1e2)
-        ax.set_xticks([0.1, 0.3, 0.5, 1.0, 3.0, 10.0, 30.0, 100.0])
+        ax.set_xlim(0.9e0, 1.1e2)
+        ax.set_xticks([1.0, 3.0, 10.0, 30.0, 100.0])
         ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
         ax.set_xlabel("pT [GeV]")
     elif "_eta" in key:
         ax.set_xlabel("$\eta$")
+        ax.set_xlim(-3.5, 3.5)
 
     ax.set_title(key.replace("_", " "))
     ax.set_ylim(0, 1)
-    ax.legend(loc="lower left")
+
+    if "fake" in key:
+        ax.legend(loc="upper right")
+    else:
+        ax.legend(loc="lower left")
 
 fig.tight_layout()
 

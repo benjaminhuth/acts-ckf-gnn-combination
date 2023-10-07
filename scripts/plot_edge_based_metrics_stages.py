@@ -17,6 +17,9 @@ from gnn4itk_cf.stages.data_reading import ActsReader
 from gnn4itk_cf.stages.graph_construction.models.utils import build_edges
 from gnn4itk_cf.stages.edge_classifier.models.filter import Filter
 
+
+plt.rcParams.update({"font.size": 16})
+
 DEVICE = "cpu" if os.environ["CUDA_VISIBLE_DEVICES"] == "" else "cuda"
 
 def cantor_pairing(a):
@@ -93,10 +96,10 @@ snakemake = Snakemake()
 graph = torch.load(snakemake.input[0])
 target_mask = (graph.nhits >= target_min_hits) & (graph.pt > target_min_pt)
 
-def score_plot(ax, scores, edges):
+def score_plot(ax, scores, edges, cut_to_draw):
     scores = scores.detach().cpu().numpy()
 
-    v, bins = np.histogram(scores, bins=40)
+    v, bins = np.histogram(scores, bins=100)
     v = v / max(v)
 
     ax.bar(bins[:-1], v, width=np.diff(bins), color="lightgrey")
@@ -127,11 +130,11 @@ def score_plot(ax, scores, edges):
     ax.plot(test_scores, eff_tgt_list, label="eff target", color="tab:orange")
     ax.plot(test_scores, pur_tgt_list, label="pur target", color="tab:orange", ls=":")
 
-    ax.vlines(0.5, ymin=ax.get_ylim()[0], ymax=ax.get_ylim()[1], ls=":", color="black")
+    ax.vlines(cut_to_draw, ymin=ax.get_ylim()[0], ymax=ax.get_ylim()[1], ls=":", lw=3, color="black")
 
     #ax.set_yscale('log')
 
-    ax.legend(loc='lower right')
+    #ax.legend(loc='lower right')
     #ax.text(0.5,0.5, "target eff={:.2f}, pur={:.2f}".format(*effpur_target), transform=plt.gca().transAxes, ha='center')
     #ax.text(0.5,0.7, "all eff={:.2f}, pur={:.2f}".format(*effpur_all), transform=plt.gca().transAxes, ha='center')
 
@@ -142,7 +145,7 @@ filterModel = torch.jit.load(snakemake.input[2])
 gnnModel = torch.jit.load(snakemake.input[3])
 
 classifier_models = {
-    "filter": filterModel,
+    "Filter": filterModel,
     "GNN": gnnModel
 }
 
@@ -181,9 +184,9 @@ def classify(model, e):
 # Loop over classifier stages
 stage_edge_list = [edge_index]
 
-fig, ax = plt.subplots(1, len(classifier_models), figsize=(8,5))
+fig, axes = plt.subplots(1, len(classifier_models), figsize=(6*len(classifier_models),5))
 
-for (stage_name, stage_model), ax in zip(classifier_models.items(), ax):
+for (stage_name, stage_model), ax, cut in zip(classifier_models.items(), axes, cuts):
     print(stage_name)
 
     if "GNN" in stage_name:
@@ -196,22 +199,23 @@ for (stage_name, stage_model), ax in zip(classifier_models.items(), ax):
     if "GNN" in stage_name:
         scores = scores[:len(scores)//2]
 
-    stage_edge_list.append(stage_edge_list[-1][:, scores > cuts[0] ])
+    stage_edge_list.append(stage_edge_list[-1][:, scores > cut ])
 
     print("- all:", effpur(graph.track_edges, stage_edge_list[-1]))
     print("- target:", effpur(graph.track_edges[:, target_mask], stage_edge_list[-1]))
 
     assert len(scores) == stage_edge_list[-2].shape[1]
-    score_plot(ax, scores, stage_edge_list[-2])
+    score_plot(ax, scores, stage_edge_list[-2], cut)
     ax.set_title(f"{stage_name} scores")
 
+axes[-1].legend(bbox_to_anchor=(1.1, 0.5))
 
 fig.tight_layout()
 fig.savefig(snakemake.output[0])
 
 # Overview plot
 print("Final plot")
-fig, ax = plt.subplots(1,3, figsize=(12,4))
+fig, ax = plt.subplots(1,3, figsize=(18,5))
 
 x_vals = np.arange(len(stage_edge_list))
 
@@ -239,10 +243,13 @@ for true_edges, title in zip([graph.track_edges, graph.track_edges[:, target_mas
 for a in ax:
     a.legend()
     a.set_xticks(x_vals)
-    a.set_xticklabels(["emb",] + list(classifier_models.keys()))
+    a.set_xticklabels(["Metric\nLearning",] + list(classifier_models.keys()))
 
 ax[1].set_yscale('log')
 ax[2].set_yscale('log')
+
+ax[2].set_ylim(0.7*1e4, 1.3*1e6)
+ax[2].set_yticks([1e4, 1e5, 1e6])
 
 fig.tight_layout()
 fig.savefig(snakemake.output[1])

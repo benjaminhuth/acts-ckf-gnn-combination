@@ -24,8 +24,8 @@ rule simulate_data:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
     params:
-        events=20,
-        jobs=10,
+        events=config["nevents"],
+        jobs=config["njobs"],
     script:
         "scripts/generate_events.py"
 
@@ -64,7 +64,7 @@ rule inference:
         cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
-        "python3 scripts/gnn_ckf.py -n1 -j1 -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
+        "python3 scripts/gnn_ckf.py -n{config[nevents]} -j{config[njobs]} -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
         "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
         "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts} 2>&1 | tee {log}"
 
@@ -143,8 +143,8 @@ rule make_pyg:
     shell:
         "SNAKEMAKE_INPUT='{input}' "
         "SNAKEMAKE_OUTPUT='{output}' "
-        "LD_LIBRARY_PATH='' "
-        "python scripts/make_pyg.py"
+        "LD_LIBRARY_PATH='/home/iwsatlas1/bhuth/thirdparty/cuda/lib64' " # Ugly hack to make cupy find cuda on odslserv01
+        "python3 scripts/make_pyg.py"
 
 
 rule plot_unmatched_prototracks:
@@ -182,8 +182,8 @@ rule plot_edge_based_metrics:
         "TARGET_MIN_PT='{params.target_min_pt}' "
         "TARGET_MIN_HITS='{params.target_min_hits}' "
         "CUTS='{params.cuts}' "
-        "LD_LIBRARY_PATH='' "
-        "python scripts/plot_edge_based_metrics_stages.py"
+        "LD_LIBRARY_PATH='/home/iwsatlas1/bhuth/thirdparty/cuda/lib64' " # Ugly hack to make cupy find cuda on odslserv01
+        "python3 scripts/plot_edge_based_metrics_stages.py"
 
 
 rule timing_plots:
@@ -220,6 +220,6 @@ rule all:
         expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
         expand("plots/{models}/edge_metrics_history.png", models=MODELS),
         expand("plots/{models}/largest_unmatched_prototracks.pdf", models=MODELS),
-#         expand("plots/{models}/timinig_plot.png", models=MODELS),
+        expand("plots/{models}/timinig_plot.png", models=MODELS),
 #         expand("plots/{models}/timinig_plot_detail.png", models=MODELS),
         expand("plots/{models}/seeding_plot.png", models=MODELS),
