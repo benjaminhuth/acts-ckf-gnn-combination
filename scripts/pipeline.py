@@ -63,8 +63,8 @@ class Pipeline(acts.examples.Sequencer):
         ###########################
 
         for d in [
-            Path("/home/benjamin/Documents/acts_project/acts"),
-            Path("/home/iwsatlas1/bhuth/acts"),
+            Path.home() / "Documents/acts_project/acts",
+            Path.home() / "acts",
         ]:
             if d.exists():
                 acts_root = d

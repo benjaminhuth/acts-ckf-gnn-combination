@@ -24,8 +24,8 @@ rule simulate_data:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
     params:
-        events=config["nevents"],
-        jobs=config["njobs"],
+        events=config["n_events"],
+        jobs=config["n_sim_jobs"],
     script:
         "scripts/generate_events.py"
 
@@ -64,7 +64,7 @@ rule inference:
         cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
-        "python3 scripts/gnn_ckf.py -n{config[nevents]} -j{config[njobs]} -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
+        "python3 scripts/gnn_ckf.py -n{config[n_events]} -j{config[n_inference_jobs]} -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
         "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
         "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts} 2>&1 | tee {log}"
 
