@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 import os
+
 os.environ["CUDA_VISIBLE_DEVICES"] = snakemake.params.cuda_visible_devices
 
 import acts
+
 u = acts.UnitConstants
 
 from pipeline import Pipeline

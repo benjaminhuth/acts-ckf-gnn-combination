@@ -23,12 +23,14 @@ plot_keys = [
     "fakerate_vs_pT",
 ]
 
-colors = [ c for _, c in zip(range(len(snakemake.input)), matplotlib.colors.TABLEAU_COLORS) ]
+colors = [
+    c for _, c in zip(range(len(snakemake.input)), matplotlib.colors.TABLEAU_COLORS)
+]
 
 for ax, key in zip(axes.flatten(), plot_keys):
     for f, color in zip(snakemake.input, colors):
         perf = ROOT.TFile.Open(f)
-        name = Path(f).parent.name.replace("_"," ").strip()
+        name = Path(f).parent.name.replace("_", " ").strip()
 
         plotTEfficency(perf.Get(key), ax, fmt="none", color=color, label=name)
 

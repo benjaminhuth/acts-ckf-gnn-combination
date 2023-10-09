@@ -556,7 +556,7 @@ class Pipeline(acts.examples.Sequencer):
         )
 
         tracks_key = f"{workflow_stem}_final_tracks"
-        tag = ''.join([ p[0] for p in workflow_stem.split('_') ])
+        tag = "".join([p[0] for p in workflow_stem.split("_")])
         self.addAlgorithm(
             acts.examples.TrackFindingFromPrototrackAlgorithm(
                 level=acts.logging.INFO,
@@ -583,7 +583,7 @@ class Pipeline(acts.examples.Sequencer):
             self.targetTrackSelectorConfig,
             inputTracks=tracks_key,
             outputTracks=tracks_selected_key,
-            logLevel=acts.logging.DEBUG, # To see new size
+            logLevel=acts.logging.DEBUG,  # To see new size
         )
 
         traj_key = f"{workflow_stem}_final_trajectories_selected"

@@ -19,11 +19,20 @@ seed_performance_proof_of_concept = ROOT.TFile.Open(snakemake.input[2])
 # Extract aggregate numbers #
 #############################
 
-number_keys = ["total_seeds", "total_seed_purity", "seed_efficiency", "seed_fakerate", "seed_duplicationrate", "avg_duplicate_seeds"]
+number_keys = [
+    "total_seeds",
+    "total_seed_purity",
+    "seed_efficiency",
+    "seed_fakerate",
+    "seed_duplicationrate",
+    "avg_duplicate_seeds",
+]
 df = pd.DataFrame({"key": number_keys})
 
+
 def add_to_df(perf_file, label):
-    df[label] = [ perf_file.Get(key)[0] for key in number_keys ]
+    df[label] = [perf_file.Get(key)[0] for key in number_keys]
+
 
 add_to_df(seed_performance_ckf, "CKF only")
 add_to_df(seed_performance_gnn_plus_ckf, "GNN+CKF")
@@ -31,30 +40,37 @@ add_to_df(seed_performance_proof_of_concept, "proof of concept")
 
 df = df.T.copy()
 df.columns = number_keys
-df = df[ [False, True, True, True] ].copy()
+df = df[[False, True, True, True]].copy()
 df = df.astype({"total_seeds": int})
 df = df.reset_index().rename(columns={"index": "workflow"})
 
 df.to_csv(snakemake.output[0], index=False)
 
-pd.set_option('display.float_format', lambda x: f"{x:.3f}")
-print(df,"\n")
+pd.set_option("display.float_format", lambda x: f"{x:.3f}")
+print(df, "\n")
 
-fig, ax = plt.subplots(figsize=(15,1))
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['bottom'].set_visible(False)
-ax.spines['left'].set_visible(False)
+fig, ax = plt.subplots(figsize=(15, 1))
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_visible(False)
+ax.spines["left"].set_visible(False)
 ax.xaxis.set_visible(False)
 ax.yaxis.set_visible(False)
 
 df = df.applymap(lambda n: f"{n:.3f}" if type(n) == float else str(n)).copy()
-table = ax.table(cellText=df.values, colLabels=df.columns, edges="open", bbox = [0, 0, 1, 1], colLoc='right', loc='center')
+table = ax.table(
+    cellText=df.values,
+    colLabels=df.columns,
+    edges="open",
+    bbox=[0, 0, 1, 1],
+    colLoc="right",
+    loc="center",
+)
 table.set_fontsize(12)
 
 for (row, col), cell in table.get_celld().items():
-  if row == 0:
-    cell.set_text_props(fontproperties=FontProperties(weight='bold'))
+    if row == 0:
+        cell.set_text_props(fontproperties=FontProperties(weight="bold"))
 
 fig.savefig(snakemake.output[1])
 
@@ -72,7 +88,7 @@ plot_keys = [
 ]
 
 for ax, key in zip(axes.flatten(), plot_keys):
-    print("plot",key)
+    print("plot", key)
     plotTEfficency(
         seed_performance_proof_of_concept.Get(key),
         ax,
@@ -81,7 +97,11 @@ for ax, key in zip(axes.flatten(), plot_keys):
         label="proof of concept",
     )
     plotTEfficency(
-        seed_performance_ckf.Get(key), ax, fmt="none", color="tab:blue", label="CKF only"
+        seed_performance_ckf.Get(key),
+        ax,
+        fmt="none",
+        color="tab:blue",
+        label="CKF only",
     )
     plotTEfficency(
         seed_performance_gnn_plus_ckf.Get(key),
@@ -107,5 +127,3 @@ for ax, key in zip(axes.flatten(), plot_keys):
 fig.tight_layout()
 
 fig.savefig(snakemake.output[2])
-
-

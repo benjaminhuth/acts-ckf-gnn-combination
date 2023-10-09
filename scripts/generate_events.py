@@ -28,7 +28,7 @@ def run_geant4_sim(args):
     u = acts.UnitConstants
 
     defaultLogLevel = acts.logging.ERROR
-    
+
     if not "ODD_DIR" in os.environ:
         for d in [
             Path.home() / "Documents/acts_project/acts",
@@ -72,8 +72,8 @@ def run_geant4_sim(args):
     addPythia8(
         s,
         vtxGen=vtxGen,
-        nhard = 1,
-        npileup = 200,
+        nhard=1,
+        npileup=200,
         rnd=rnd,
         hardProcess=["Top:qqbar2ttbar=on"],
     )

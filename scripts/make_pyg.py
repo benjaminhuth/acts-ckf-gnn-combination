@@ -11,15 +11,18 @@ import uproot
 
 from gnn4itk_cf.stages.data_reading.models.acts_reader import ActsReader
 
+
 class ModifiedActsReader(ActsReader):
     def __init__(self, cfg):
         detector = pd.read_csv(cfg["detector_path"])
         geoid_to_volume = dict(zip(detector.geometry_id, detector.volume_id))
 
-        particles = ak.to_dataframe(uproot.open(f"{cfg['particles_file']}:particles").arrays()).reset_index(drop=True)
+        particles = ak.to_dataframe(
+            uproot.open(f"{cfg['particles_file']}:particles").arrays()
+        ).reset_index(drop=True)
 
         hits = uproot.open(f"{cfg['hit_file']}:hits").arrays(library="pd")
-        hits = hits[ hits.tt < 25 ].copy()
+        hits = hits[hits.tt < 25].copy()
 
         num_events = sum(cfg["data_split"])
 
@@ -28,33 +31,55 @@ class ModifiedActsReader(ActsReader):
 
         for i in range(num_events):
             stem = f"event{i:09d}"
-            particles[ particles.event_id == i ].to_csv(raw_dir / f"{stem}-particles_initial.csv", index=False)
-            hits[ hits.event_id == i ].drop(columns=['volume_id', 'boundary_id', 'layer_id', 'approach_id', 'sensitive_id']).to_csv(raw_dir / f"{stem}-hits.csv", index=False)
+            particles[particles.event_id == i].to_csv(
+                raw_dir / f"{stem}-particles_initial.csv", index=False
+            )
+            hits[hits.event_id == i].drop(
+                columns=[
+                    "volume_id",
+                    "boundary_id",
+                    "layer_id",
+                    "approach_id",
+                    "sensitive_id",
+                ]
+            ).to_csv(raw_dir / f"{stem}-hits.csv", index=False)
             hits = hits.copy()
 
             measurements = pd.read_csv(digi_dir / f"{stem}-measurements.csv")
-            measurements = measurements[ measurements.geometry_id.map(geoid_to_volume).isin([16,17,18]) ].copy()
+            measurements = measurements[
+                measurements.geometry_id.map(geoid_to_volume).isin([16, 17, 18])
+            ].copy()
             measurements.to_csv(raw_dir / f"{stem}-measurements.csv", index=False)
 
-            measurement_simhit_map = pd.read_csv(digi_dir / f"{stem}-measurement-simhit-map.csv")
-            measurement_simhit_map = measurement_simhit_map[ measurement_simhit_map.measurement_id.isin(measurements.measurement_id) ]
-            measurement_simhit_map.to_csv(raw_dir / f"{stem}-measurement-simhit-map.csv", index=False)
+            measurement_simhit_map = pd.read_csv(
+                digi_dir / f"{stem}-measurement-simhit-map.csv"
+            )
+            measurement_simhit_map = measurement_simhit_map[
+                measurement_simhit_map.measurement_id.isin(measurements.measurement_id)
+            ]
+            measurement_simhit_map.to_csv(
+                raw_dir / f"{stem}-measurement-simhit-map.csv", index=False
+            )
 
-            shutil.copyfile(digi_dir / f"{stem}-cells.csv", raw_dir / f"{stem}-cells.csv")
+            shutil.copyfile(
+                digi_dir / f"{stem}-cells.csv", raw_dir / f"{stem}-cells.csv"
+            )
 
         super().__init__(cfg)
+
 
 # Workaround because we must call this from shell
 class Snakemake:
     input = os.environ["SNAKEMAKE_INPUT"].split()
     output = os.environ["SNAKEMAKE_OUTPUT"].split()
 
+
 snakemake = Snakemake()
 
 with tempfile.TemporaryDirectory() as tmp:
     cfg = yaml.load(open(snakemake.input[0], "r"), Loader=yaml.FullLoader)
 
-    cfg["data_split"] = [1,0,0]
+    cfg["data_split"] = [1, 0, 0]
     cfg["detector_path"] = snakemake.input[1]
     cfg["particles_file"] = snakemake.input[2]
     cfg["hit_file"] = snakemake.input[3]
