@@ -16,6 +16,7 @@ sys.path.append("/home/iwsatlas1/bhuth/exatrkx/gnn4itk/commonframework")
 from gnn4itk_cf.stages.data_reading import ActsReader
 from gnn4itk_cf.stages.graph_construction.models.utils import build_edges
 from gnn4itk_cf.stages.edge_classifier.models.filter import Filter
+from gnn4itk_cf.stages.graph_construction.models.utils import graph_intersection
 
 
 plt.rcParams.update({"font.size": 16})
@@ -94,6 +95,10 @@ snakemake = Snakemake()
 
 # Graph
 graph = torch.load(snakemake.input[0])
+
+
+print(graph)
+
 target_mask = (graph.nhits >= target_min_hits) & (graph.pt > target_min_pt)
 
 def score_plot(ax, scores, edges, cut_to_draw):
@@ -137,6 +142,71 @@ def score_plot(ax, scores, edges, cut_to_draw):
     #ax.legend(loc='lower right')
     #ax.text(0.5,0.5, "target eff={:.2f}, pur={:.2f}".format(*effpur_target), transform=plt.gca().transAxes, ha='center')
     #ax.text(0.5,0.7, "all eff={:.2f}, pur={:.2f}".format(*effpur_all), transform=plt.gca().transAxes, ha='center')
+
+
+def score_plot_pos_neg(ax, scores, edges):
+    # _, y, truth_map = graph_intersection(
+    #     edges,
+    #     graph.track_edges,
+    #     return_y_pred=True,
+    #     return_truth_to_pred=True,
+    #     unique_pred=False,
+    # )
+    # y = y.numpy()
+
+    cantor_edges = cantor_pairing(edges)
+    cantor_all = cantor_pairing(graph.track_edges)
+    cantor_target = cantor_pairing(graph.track_edges[:, target_mask])
+
+    y_all = np.isin(cantor_edges, cantor_all)
+    y_target = np.isin(cantor_edges, cantor_target)
+
+    # target_map = truth_map[target_mask].numpy()
+    # target_map = target_map[ target_map != -1 ]
+    #
+    # target_index_mask = np.zeros(len(y), dtype=bool)
+    # target_index_mask[ target_map ] = True
+
+    pos_edges = scores.numpy()[ y_all & ~y_target ]
+    pos_target_edges = scores.numpy()[ y_target ]
+    neg_edges = scores.numpy()[ ~y_all ]
+
+    # print(pos_edges)
+    # print(neg_edges)
+
+    # ax.hist([neg_edges, pos_edges], bins=100, histtype="bar", stacked=True, color=["tab:red", "tab:green"])
+    ax.hist([pos_target_edges, pos_edges, neg_edges], bins=50, histtype="bar", stacked=True,
+            color=["darkgreen", "forestgreen", "tab:red"],
+            label=["true (target)", "true (non-target)", "false"])
+
+    #ax.hist([pos_edges], bins=100, histtype="bar", stacked=True, color=["tab:green"])
+
+    ax.legend()
+    ax.set_yscale('log')
+    ax.set_xlabel("score")
+
+
+def eta_eff_plot(ax, edges):
+    cantor_edges = cantor_pairing(edges)
+    cantor_true = cantor_pairing(graph.track_edges[:, target_mask])
+    true_positive = edges[ :, np.isin(cantor_edges, cantor_true) ]
+
+    eta_true = graph.eta[ np.sort(graph.track_edges[:, target_mask], 0)[0] ]
+    eta_true_positive = graph.eta[ np.sort(true_positive, 0)[0] ]
+
+    x1, bins = np.histogram(eta_true, bins=20, range=(-3.5,3.5))
+    x2, _ = np.histogram(eta_true_positive, bins=bins)
+
+    assert (x1 > 0).all()
+    assert (x2 <= x1).all()
+
+    eff = x2 / x1
+
+    ax.bar(bins[:-1],eff,np.diff(bins))
+    ax.set_ylabel("edge efficiency")
+    ax.set_xlabel("$\eta$")
+    ax.set_ylim(0,1.05)
+    ax.set_xticks(np.linspace(-3., 3., 7))
 
 
 # Models
@@ -186,7 +256,11 @@ stage_edge_list = [edge_index]
 
 fig, axes = plt.subplots(1, len(classifier_models), figsize=(6*len(classifier_models),5))
 
-for (stage_name, stage_model), ax, cut in zip(classifier_models.items(), axes, cuts):
+fig2, axes2 = plt.subplots(1, len(classifier_models), figsize=(6*len(classifier_models),5))
+
+fig3, axes3 = plt.subplots(1, len(classifier_models), figsize=(6*len(classifier_models),5))
+
+for (stage_name, stage_model), ax, ax2, ax3, cut in zip(classifier_models.items(), axes, axes2, axes3, cuts):
     print(stage_name)
 
     if "GNN" in stage_name:
@@ -208,10 +282,26 @@ for (stage_name, stage_model), ax, cut in zip(classifier_models.items(), axes, c
     score_plot(ax, scores, stage_edge_list[-2], cut)
     ax.set_title(f"{stage_name} scores")
 
+    score_plot_pos_neg(ax2, scores, stage_edge_list[-2])
+    ax2.set_title(f"{stage_name} scores")
+
+    eta_eff_plot(ax3, stage_edge_list[-1])
+    ax3.set_title(f"{stage_name} scores")
+
+
+
 axes[-1].legend(bbox_to_anchor=(1.1, 0.5))
 
 fig.tight_layout()
 fig.savefig(snakemake.output[0])
+
+fig2.tight_layout()
+fig2.savefig(snakemake.output[2])
+
+fig3.tight_layout()
+fig3.savefig(snakemake.output[3])
+
+plt.show()
 
 # Overview plot
 print("Final plot")

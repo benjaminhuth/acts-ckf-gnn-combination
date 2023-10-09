@@ -172,6 +172,8 @@ rule plot_edge_based_metrics:
     output:
         "plots/{exatrkx_models}/filter_gnn_score_hists.png",
         "plots/{exatrkx_models}/edge_metrics_history.png",
+        "plots/{exatrkx_models}/scores_pos_neg.png",
+        "plots/{exatrkx_models}/edge_eff_eta.png",
     params:
         target_min_hits=3,
         target_min_pt=1.0,
@@ -199,7 +201,7 @@ rule timing_plots:
 
 # MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
 # MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
-MODELS = ["high_eff",]
+MODELS = ["no_threshold_2",]
 
 rule cross_perf_plots:
     input:
@@ -213,6 +215,8 @@ rule all:
     default_target: True
     input:
         "plots/crosscomp/perf_cross_comparison.png",
+        "plots/no_threshold_2/edge_eff_eta.png",
+        "plots/no_threshold_2/scores_pos_neg.png",
         expand("plots/{models}/perf_plots.png", models=MODELS),
         expand("plots/{models}/detailed_matching_hist.png", models=MODELS),
         expand("plots/{models}/detailed_matching_eff.png", models=MODELS),
