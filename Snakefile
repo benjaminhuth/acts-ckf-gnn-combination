@@ -15,6 +15,7 @@ CLASSIFIER_CUTS = {
     "high_eff": [0.05, 0.01, 0.5],
 }
 
+
 envvars:
     "CUDA_VISIBLE_DEVICES",
 
@@ -35,7 +36,7 @@ rule inference:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
         "torchscript/{exatrkx_models}/gnn.pt",
-    log: 
+    log:
         "tmp/{exatrkx_models}/logs/inference.log",
     output:
         expand(
@@ -61,7 +62,9 @@ rule inference:
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.exatrkx_models],
-        cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
+        cuts=lambda wildcards: " ".join(
+            [str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models]]
+        ),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
         "python3 scripts/gnn_ckf.py -n{config[n_events]} -j{config[n_inference_jobs]} -o tmp/{wildcards.exatrkx_models} -i tmp/simdata "
@@ -78,7 +81,9 @@ rule inference_cpu:
         "tmp/{exatrkx_models}/cpu/timing.tsv",
     params:
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.exatrkx_models],
-        cuts=lambda wildcards: " ".join([ str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models] ]),
+        cuts=lambda wildcards: " ".join(
+            [str(c) for c in CLASSIFIER_CUTS[wildcards.exatrkx_models]]
+        ),
     shell:
         "CUDA_VISIBLE_DEVICES='' "
         "python3 scripts/gnn_ckf.py -n5 -j5 -o tmp/{wildcards.exatrkx_models}/cpu -i tmp/simdata "
@@ -93,6 +98,7 @@ rule performance_plots:
         "plots/{exatrkx_models}/perf_plots.png",
     script:
         "scripts/make_perf_plots.py"
+
 
 rule seeding_plots:
     input:
@@ -129,6 +135,7 @@ rule prototrack_based_plots:
         "scripts/prototrack_plots.py"
 
 
+# Here I use an ugly hack to make cupy find cuda on odslserv01
 rule make_pyg:
     input:
         "config/data_reading.yaml",
@@ -143,7 +150,7 @@ rule make_pyg:
     shell:
         "SNAKEMAKE_INPUT='{input}' "
         "SNAKEMAKE_OUTPUT='{output}' "
-        "LD_LIBRARY_PATH='/home/iwsatlas1/bhuth/thirdparty/cuda/lib64' " # Ugly hack to make cupy find cuda on odslserv01
+        "LD_LIBRARY_PATH='/home/iwsatlas1/bhuth/thirdparty/cuda/lib64' "
         "python3 scripts/make_pyg.py"
 
 
@@ -163,6 +170,7 @@ rule plot_unmatched_prototracks:
         "scripts/plot_unmatched_prototracks.py"
 
 
+# Here I use an ugly hack to make cupy find cuda on odslserv01
 rule plot_edge_based_metrics:
     input:
         "tmp/{exatrkx_models}/pyg/event000000000-graph.pyg",
@@ -184,7 +192,7 @@ rule plot_edge_based_metrics:
         "TARGET_MIN_PT='{params.target_min_pt}' "
         "TARGET_MIN_HITS='{params.target_min_hits}' "
         "CUTS='{params.cuts}' "
-        "LD_LIBRARY_PATH='/home/iwsatlas1/bhuth/thirdparty/cuda/lib64' " # Ugly hack to make cupy find cuda on odslserv01
+        "LD_LIBRARY_PATH='/home/iwsatlas1/bhuth/thirdparty/cuda/lib64' "
         "python3 scripts/plot_edge_based_metrics_stages.py"
 
 
@@ -201,7 +209,10 @@ rule timing_plots:
 
 # MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
 # MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
-MODELS = ["no_threshold_2",]
+MODELS = [
+    "no_threshold_2",
+]
+
 
 rule cross_perf_plots:
     input:
@@ -211,12 +222,13 @@ rule cross_perf_plots:
     script:
         "scripts/make_perf_cross_comparison.py"
 
+
 rule all:
     default_target: True
     input:
         "plots/crosscomp/perf_cross_comparison.png",
-        "plots/no_threshold_2/edge_eff_eta.png",
-        "plots/no_threshold_2/scores_pos_neg.png",
+        expand("plots/{models}/edge_eff_eta.png", models=MODELS),
+        expand("plots/{models}/scores_pos_neg.png", models=MODELS),
         expand("plots/{models}/perf_plots.png", models=MODELS),
         expand("plots/{models}/detailed_matching_hist.png", models=MODELS),
         expand("plots/{models}/detailed_matching_eff.png", models=MODELS),
@@ -225,5 +237,5 @@ rule all:
         expand("plots/{models}/edge_metrics_history.png", models=MODELS),
         expand("plots/{models}/largest_unmatched_prototracks.pdf", models=MODELS),
         expand("plots/{models}/timinig_plot.png", models=MODELS),
-#         expand("plots/{models}/timinig_plot_detail.png", models=MODELS),
+        expand("plots/{models}/timinig_plot_detail.png", models=MODELS),
         expand("plots/{models}/seeding_plot.png", models=MODELS),
