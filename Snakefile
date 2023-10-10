@@ -72,6 +72,37 @@ rule inference:
         "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts} 2>&1 | tee {log}"
 
 
+
+rule inference_ckf_params:
+    input:
+        "tmp/simdata/particles_initial.root",
+        "tmp/simdata/hits.root",
+        "torchscript/high_eff/gnn.pt",
+    output:
+        expand(
+            "tmp/high_eff_ckf_params/performance_{type}.{ext}",
+            type=RECO_TYPES,
+            ext=FORMATS,
+        ),
+        expand(
+            "tmp/high_eff_ckf_params/seeding_performance_{type}.root",
+            type=RECO_TYPES_NO_TT,
+        ),
+        expand(
+            "tmp/high_eff_ckf_params/tracksummary_{type}.root",
+            type=RECO_TYPES_NO_TT,
+        ),
+    params:
+        cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
+        digi=DIGI_CONFIG_FILE["high_eff"],
+        cuts=[str(c) for c in CLASSIFIER_CUTS["high_eff"]],
+    shell:
+        "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
+        "python3 scripts/gnn_ckf.py -n3 -j1 -o tmp/high_eff_ckf_params -i tmp/simdata "
+        "-ckf -km -gnn -poc --digi={params.digi} --modeldir=torchscript/high_eff "
+        "--ckfNCandidates=5 --ckfChi2Cut=7.5 "
+        "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts}"
+
 rule inference_cpu:
     input:
         "tmp/simdata/particles_initial.root",
@@ -86,7 +117,7 @@ rule inference_cpu:
         ),
     shell:
         "CUDA_VISIBLE_DEVICES='' "
-        "python3 scripts/gnn_ckf.py -n5 -j5 -o tmp/{wildcards.exatrkx_models}/cpu -i tmp/simdata "
+        "python3 scripts/gnn_ckf.py -n1 -j1 -o tmp/{wildcards.exatrkx_models}/cpu -i tmp/simdata "
         "-gnn --digi={params.digi} --modeldir=torchscript/{wildcards.exatrkx_models} "
         "--minEnergyDeposit=3.65e-06 --targetPT=1.0 --cuts {params.cuts}"
 
@@ -207,11 +238,7 @@ rule timing_plots:
         "scripts/plot_timing.py"
 
 
-# MODELS=["no_threshold", "125_thickness", "no_threshold_2"]
-# MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
-MODELS = [
-    "no_threshold_2",
-]
+MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
 
 
 rule cross_perf_plots:
@@ -239,3 +266,4 @@ rule all:
         expand("plots/{models}/timinig_plot.png", models=MODELS),
         expand("plots/{models}/timinig_plot_detail.png", models=MODELS),
         expand("plots/{models}/seeding_plot.png", models=MODELS),
+        "plots/high_eff_ckf_params/perf_plots.png",

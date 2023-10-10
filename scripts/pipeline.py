@@ -140,8 +140,10 @@ class Pipeline(acts.examples.Sequencer):
         )
 
         # For all CKFs:
+        chi2Cut = self.args["ckfChi2Cut"] if "ckfChi2Cut" in self.args else 15.0
+        nCandidates = self.args["ckfNCandidates"] if "ckfNCandidates" else 10
         self.measurementSelectorCfg = acts.MeasurementSelector.Config(
-            [(acts.GeometryIdentifier(), ([], [15.0], [10]))]
+            [(acts.GeometryIdentifier(), ([], [chi2Cut], [nCandidates]))]
         )
 
         # Magnetic field

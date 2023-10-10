@@ -1,6 +1,6 @@
 n_events: 20
 n_sim_jobs: 10
-n_inference_jobs: 1
+n_inference_jobs: 10
 
 plt_show: False #True
 plot_width: 6

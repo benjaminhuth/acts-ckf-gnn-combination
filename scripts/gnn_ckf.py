@@ -48,6 +48,8 @@ def main():
     parser.add_argument("--minEnergyDeposit", type=float, default=0)
     parser.add_argument("--cleanSubgraphs", action="store_true")
     parser.add_argument('--cuts', nargs='+', type=float, default=[0.5,0.5])
+    parser.add_argument('--ckfChi2Cut', type=float, default=15.0)
+    parser.add_argument('--ckfNCandidates', type=int, default=10)
     # fmt: on
 
     args = vars(parser.parse_args())
