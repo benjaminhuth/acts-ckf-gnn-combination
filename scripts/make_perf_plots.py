@@ -10,12 +10,12 @@ from pathlib import Path
 import utils
 from utils import plotTEfficency
 
-performance_ckf = ROOT.TFile.Open(snakemake.input[0])
-performance_gnn_ckf = ROOT.TFile.Open(snakemake.input[1])
-performance_proof_of_concept = ROOT.TFile.Open(snakemake.input[2])
-performance_truth_kalman = ROOT.TFile.Open(snakemake.input[3])
-
-fig, axes = utils.subplots(2, 3, snakemake)
+color_dict = {
+    "performance_proof_of_concept.root": "tab:green",
+    "performance_truth_kalman.root": "tab:red",
+    "performance_gnn_plus_ckf.root": "tab:orange",
+    "performance_standard_ckf.root": "tab:blue",
+}
 
 plot_keys = [
     "trackeff_vs_eta",
@@ -26,49 +26,41 @@ plot_keys = [
     "fakerate_vs_pT",
 ]
 
-for ax, key in zip(axes.flatten(), plot_keys):
-    plotTEfficency(
-        performance_proof_of_concept.Get(key),
-        ax,
-        fmt="none",
-        color="tab:green",
-        label="proof of concept",
-    )
-    plotTEfficency(
-        performance_truth_kalman.Get(key),
-        ax,
-        fmt="none",
-        color="tab:red",
-        label="truth kalman",
-    )
-    plotTEfficency(
-        performance_ckf.Get(key), ax, fmt="none", color="tab:blue", label="CKF only"
-    )
-    plotTEfficency(
-        performance_gnn_ckf.Get(key),
-        ax,
-        fmt="none",
-        color="tab:orange",
-        label="GNN + CKF",
-    )
+fig, axes = utils.subplots(2, 3, snakemake)
 
-    if "_pT" in key:
-        ax.set_xscale("log")
-        ax.set_xlim(0.9e0, 1.1e2)
-        ax.set_xticks([1.0, 3.0, 10.0, 30.0, 100.0])
-        ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-        ax.set_xlabel("pT [GeV]")
-    elif "_eta" in key:
-        ax.set_xlabel("$\eta$")
-        ax.set_xlim(-3.5, 3.5)
+for input_file in snakemake.input:
+    performance_file = ROOT.TFile.Open(input_file)
 
-    ax.set_title(key.replace("_", " "))
-    ax.set_ylim(0, 1)
+    name = Path(input_file).name
+    label = name.replace("_", " ").replace("plus", "&").replace(".root", "").replace("performance", "").strip()
+    color = color_dict[name]
 
-    if "fake" in key:
-        ax.legend(loc="upper right")
-    else:
-        ax.legend(loc="lower left")
+    for ax, key in zip(axes.flatten(), plot_keys):
+        plotTEfficency(
+            performance_file.Get(key),
+            ax,
+            fmt="none",
+            color=color,
+            label=label,
+        )
+
+        if "_pT" in key:
+            ax.set_xscale("log")
+            ax.set_xlim(0.9e0, 1.1e2)
+            ax.set_xticks([1.0, 3.0, 10.0, 30.0, 100.0])
+            ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+            ax.set_xlabel("pT [GeV]")
+        elif "_eta" in key:
+            ax.set_xlabel("$\eta$")
+            ax.set_xlim(-3.5, 3.5)
+
+        ax.set_title(key.replace("_", " "))
+        ax.set_ylim(0, 1)
+
+        if "fake" in key:
+            ax.legend(loc="upper right")
+        else:
+            ax.legend(loc="lower left")
 
 fig.tight_layout()
 
