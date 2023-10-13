@@ -62,14 +62,18 @@ class Pipeline(acts.examples.Sequencer):
         # Load Open Data Detector #
         ###########################
 
-        for d in [
-            Path.home() / "Documents/acts_project/acts",
-            Path.home() / "acts",
-        ]:
-            if d.exists():
-                acts_root = d
+        if "ODD_DIR" in os.environ:
+            oddDir = Path(os.environ["ODD_DIR"])
+        else:
+            for d in [
+                Path.home() / "Documents/acts_project/acts",
+                Path.home() / "acts",
+            ]:
+                if d.exists():
+                    acts_root = d
 
-        oddDir = acts_root / "thirdparty/OpenDataDetector"
+            oddDir = acts_root / "thirdparty/OpenDataDetector"
+            
         assert oddDir.exists()
 
         oddMaterialMap = oddDir / "data/odd-material-maps.root"
