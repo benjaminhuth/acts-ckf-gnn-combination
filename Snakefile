@@ -106,7 +106,7 @@ rule inference_for_timing:
         "tmp/simdata/hits.root",
         "torchscript/{exatrkx_models}/gnn.pt",
     log:
-        "tmp/{exatrkx_models}/logs/inference.log",
+        "tmp/{exatrkx_models}/logs/inference_timing.log",
     output:
         "tmp/{exatrkx_models}/timing.tsv",
     params:
@@ -239,6 +239,7 @@ rule timing_plots:
     input:
         "tmp/{exatrkx_models}/timing.tsv",
         "tmp/{exatrkx_models}/cpu/timing.tsv",
+        "tmp/{exatrkx_models}/logs/inference_timing.log",
     output:
         "plots/{exatrkx_models}/timinig_plot.png",
         "plots/{exatrkx_models}/timinig_plot_detail.png",
@@ -246,8 +247,9 @@ rule timing_plots:
         "scripts/plot_timing.py"
 
 
-MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
+#MODELS = ["125_thickness", "no_threshold_2", "high_eff"]
 MODELS = ["high_eff"]
+MODELSPLUS = ["high_eff", "high_eff_no_c"]
 
 
 rule cross_perf_plots:
@@ -282,6 +284,6 @@ rule all:
         expand("plots/{models}/filter_gnn_score_hists.png", models=MODELS),
         expand("plots/{models}/edge_metrics_history.png", models=MODELS),
         expand("plots/{models}/largest_unmatched_prototracks.pdf", models=MODELS),
-#         expand("plots/{models}/timinig_plot.png", models=MODELS),
-#         expand("plots/{models}/timinig_plot_detail.png", models=MODELS),
-        expand("plots/{models}/seeding_plot.png", models=MODELS),
+        expand("plots/{models}/timinig_plot.png", models=MODELSPLUS),
+        expand("plots/{models}/timinig_plot_detail.png", models=MODELSPLUS),
+        expand("plots/{models}/seeding_plot.png", models=MODELSPLUS),
