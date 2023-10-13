@@ -2,7 +2,6 @@
 
 This is the repository related to https://indico.cern.ch/event/1252748/contributions/5521546.
 Training scripts are not included, only final models in torchscript format.
- https://gitlab.cern.ch/bhuth/commonframework/-/tags/cdt2023
 
 NOTE: This is work in progress and subject to change.
 
