@@ -1,3 +1,4 @@
+snakemake==7.32.3
 pytorch-lightning==1.9.2
 torch==1.13.1+cu117
 torch-cluster==1.6.1+pt113cu117
