@@ -19,7 +19,7 @@ from gnn4itk_cf.stages.edge_classifier.models.filter import Filter
 from gnn4itk_cf.stages.graph_construction.models.utils import graph_intersection
 
 
-plt.rcParams.update({"font.size": 16})
+# plt.rcParams.update({"font.size": 16})
 
 DEVICE = "cpu" if os.environ["CUDA_VISIBLE_DEVICES"] == "" else "cuda"
 
@@ -237,7 +237,7 @@ embeddingModel = torch.jit.load(snakemake.input[1])
 filterModel = torch.jit.load(snakemake.input[2])
 gnnModel = torch.jit.load(snakemake.input[3])
 
-classifier_models = {"Filter": filterModel, "GNN": gnnModel}
+classifier_models = {"MPL filter": filterModel, "GNN": gnnModel}
 
 # TODO make this visible to snakemake
 gnnModel2Path = Path(snakemake.input[3]).parent / "gnn2.pt"
@@ -263,6 +263,7 @@ print("Metric learning")
 
 with torch.inference_mode():
     emb = embeddingModel.to(DEVICE)(x.to(DEVICE))
+
     edge_index = (
         remove_duplicates_with_random_flip(
             build_edges(emb, emb, r_max=0.2, k_max=100, backend="")
@@ -270,12 +271,13 @@ with torch.inference_mode():
         .detach()
         .cpu()
     )
-    del emb
+
+    emb = emb.detach().cpu().numpy()
 
 print("- all:", effpur(graph.track_edges, edge_index))
 print("- target:", effpur(graph.track_edges[:, target_mask], edge_index))
 
-
+# Loop over classifier stages
 def classify(model, e):
     with torch.inference_mode():
         return (
@@ -284,8 +286,6 @@ def classify(model, e):
             .cpu()
         )
 
-
-# Loop over classifier stages
 stage_edge_list = [edge_index]
 
 fig, axes = plt.subplots(
@@ -353,7 +353,17 @@ x_vals = np.arange(len(stage_edge_list))
 ax[0].set_title("Efficiency")
 ax[1].set_title("Purity")
 ax[2].set_title("Graph size")
-ax[2].plot(x_vals, [e.shape[1] for e in stage_edge_list], "x-k")
+
+graph_sizes = [e.shape[1] for e in stage_edge_list]
+ax[2].plot(x_vals, graph_sizes, "x-k")
+
+for x1, x2, y1, y2 in zip(x_vals[:-1], x_vals[1:], graph_sizes[:-1], graph_sizes[1:]):
+    dy = y2 - y1
+    x = x1 + (x2 - x1)/2
+    log_y = np.log10(y1) + (np.log10(y2) - np.log10(y1)) / 2
+    y = 10**log_y
+    ax[2].text(x, y, f"{dy//1000}k", ha="left", va="bottom", color="dimgrey")
+
 
 for true_edges, title in zip(
     [graph.track_edges, graph.track_edges[:, target_mask]],
@@ -367,8 +377,8 @@ for true_edges, title in zip(
         effs.append(eff)
         purs.append(pur)
 
-        ax[0].text(x, eff, f"{eff:.2f}", ha="center", color="dimgrey")
-        ax[1].text(x, pur, f"{pur:.2f}", ha="center", color="dimgrey")
+        ax[0].text(x, eff, f"{eff:.2f}", ha="center", va="bottom", color="dimgrey")
+        ax[1].text(x, pur, f"{pur:.2f}", ha="center", va="bottom", color="dimgrey")
 
     ax[0].plot(x_vals, effs, "x-", label=title)
     ax[1].plot(x_vals, purs, "x-", label=title)
@@ -382,6 +392,9 @@ for a in ax:
         ]
         + list(classifier_models.keys())
     )
+
+ax[0].set_ylim(0, 1.09)
+ax[1].set_ylim(7e-3, 1.99)
 
 ax[1].set_yscale("log")
 ax[2].set_yscale("log")

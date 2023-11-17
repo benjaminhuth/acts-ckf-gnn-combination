@@ -42,14 +42,14 @@ algs = {
         10: "TrackFindingAlgorithm",
     },
     "poc": {
-        12: "TruthTrackFinder",
-        13: "PrototracksToParsAndSeeds",
-        14: "CkfFromProtoTracks",
+        11: "TruthTrackFinder",
+        12: "PrototracksToParsAndSeeds",
+        13: "CkfFromProtoTracks",
     },
     "gnn": {
-        17: "TrackFindingMLBasedAlgorithm",
-        18: "PrototracksToParsAndSeeds",
-        19: "CkfFromProtoTracks",
+        15: "TrackFindingMLBasedAlgorithm",
+        16: "PrototracksToParsAndSeeds",
+        17: "CkfFromProtoTracks",
     },
     "gnncpu": {
         6: "TrackFindingMLBasedAlgorithm",
@@ -80,8 +80,20 @@ data_src = {
     "ttk": timing_gpu,
 }
 
+class RemapDict(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    def __missing__(self, key):
+        return key
 
-keys_to_plot = ["gnn", "ckf", "poc"]
+remap_names = RemapDict({
+    "CkfFromProtoTracks": "Modified CKF",
+    "TrackFindingMLBased": "GNN Pipeline",
+    "TrackFinding" : "Standard CKF"
+})
+
+
+keys_to_plot = ["gnn", "poc", "ckf"]
 print("Consider",keys_to_plot)
 
 total_times = {}
@@ -110,7 +122,7 @@ def plot_chain(key, ax, x, text_height_threshold=0.5):
     timing = data_src[key]
 
     for (i, name), color in zip(algs[key].items(), colors):
-        assert name in timing.iloc[i].identifier
+        assert name in timing.iloc[i].identifier, f"{name} not in {timing.iloc[i].identifier}"
 
         if name[-9:] == "Algorithm":
             name = name[:-9]
@@ -121,7 +133,7 @@ def plot_chain(key, ax, x, text_height_threshold=0.5):
 
         if bar.get_height() > text_height_threshold:
             ytext = min(y + 0.5 * t, y + 0.5 * (lo_range[1] - y))
-            ax.text(x, ytext, name, ha="center", va="center")
+            ax.text(x, ytext, remap_names[name], ha="center", va="center")
 
         y += t
 
@@ -131,11 +143,12 @@ def plot_chain(key, ax, x, text_height_threshold=0.5):
 #     height_ratios=[ hi_range[1]-hi_range[0], mi_range[1]-mi_range[0], lo_range[1]-lo_range[0] ]
 # )
 
+figsize=(2 * len(keys_to_plot), 5)
 fig, (ax_hi, ax_lo) = plt.subplots(
     2,
     1,
     sharex=True,
-    figsize=(2 * len(keys_to_plot), 5),
+    figsize=figsize,
     height_ratios=[hi_range[1] - hi_range[0], lo_range[1] - lo_range[0]],
 )
 
@@ -198,7 +211,7 @@ fig.savefig(snakemake.output[0])
 # Only pipeline #
 #################
 
-fig, ax = plt.subplots(figsize=(4,4))
+fig, ax = plt.subplots(figsize=figsize)
 plot_chain("gnn", ax, 0, 10000)
 
 with open(snakemake.input[2], 'r') as f:
@@ -206,9 +219,9 @@ with open(snakemake.input[2], 'r') as f:
     classifier_times = []
     track_building_time = None
 
-    gb_regex = r"^.*INFO\s+- graph building:\s+([0-9]+.[0-9]+)\s\+-\s([0-9]+.[0-9]+)$"
-    clf_regex = r"^.*INFO\s+- classifier:\s+([0-9]+.[0-9]+)\s\+-\s([0-9]+.[0-9]+)$"
-    tb_regex = r"^.*INFO\s+- track building:\s+([0-9]+.[0-9]+)\s\+-\s([0-9]+.[0-9]+)$"
+    gb_regex = r"^.*INFO\s+- graph building:\s+([0-9]+.[0-9]+)\s\+-\s([0-9]+(.[0-9]+)?)$"
+    clf_regex = r"^.*INFO\s+- classifier:\s+([0-9]+.[0-9]+)\s\+-\s([0-9]+(.[0-9]+)?)$"
+    tb_regex = r"^.*INFO\s+- track building:\s+([0-9]+.[0-9]+)\s\+-\s([0-9]+(.[0-9]+)?)$"
 
     for line in f:
         m = re.match(gb_regex, line)
@@ -233,7 +246,7 @@ assert track_building_time is not None
 assert len(classifier_times) > 0
 
 classifier_labels = [ f"GNN{i}" for i in range(len(classifier_times)) ]
-classifier_labels[0]  = "filter"
+classifier_labels[0]  = "MLP filter"
 
 ax.set_xticks([0])
 ax.set_xticklabels(["GNN-based (GPU)"])

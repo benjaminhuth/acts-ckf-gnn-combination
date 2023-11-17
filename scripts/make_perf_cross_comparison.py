@@ -23,6 +23,21 @@ plot_keys = [
     "fakerate_vs_pT",
 ]
 
+replace_dict = {
+    "_": " ",
+    "eta": "$\eta$",
+    "pT": "$p_T$",
+    "duplicationRate" : "duplication rate",
+    "fakerate" : "fake rate",
+    "trackeff" : "matching efficiency",
+}
+
+def replace_key_text(key):
+    for a, b in replace_dict.items():
+        key = key.replace(a, b)
+
+    return key
+
 colors = [
     c for _, c in zip(range(len(snakemake.input)), matplotlib.colors.TABLEAU_COLORS)
 ]
@@ -30,22 +45,24 @@ colors = [
 for ax, key in zip(axes.flatten(), plot_keys):
     for f, color in zip(snakemake.input, colors):
         perf = ROOT.TFile.Open(f)
-        name = Path(f).parent.name.replace("_", " ").strip()
-
+        name = Path(f).parent.name
+        name = name.replace("_no_c", " (no combinatorics)").replace("_", " ")
         plotTEfficency(perf.Get(key), ax, fmt="none", color=color, label=name)
 
     if "_pT" in key:
         ax.set_xscale("log")
-        ax.set_xlim(0.9e-1, 1.1e2)
-        ax.set_xticks([0.1, 0.3, 0.5, 1.0, 3.0, 10.0, 30.0, 100.0])
+        ax.set_xlim(0.9e0, 1.1e2)
+        ax.set_xticks([1.0, 3.0, 10.0, 30.0, 100.0])
         ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-        ax.set_xlabel("pT [GeV]")
+        ax.set_xlabel("$p_T$ [GeV]")
     elif "_eta" in key:
         ax.set_xlabel("$\eta$")
 
-    ax.set_title(key.replace("_", " "))
+    ax.set_title(replace_key_text(key))
     ax.set_ylim(0, 1)
-    ax.legend(loc="lower left")
+
+
+axes[0,0].legend(loc="lower left")
 
 fig.tight_layout()
 

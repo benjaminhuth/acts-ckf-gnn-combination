@@ -121,7 +121,7 @@ class Pipeline(acts.examples.Sequencer):
             assert os.path.exists(self.digiConfigFile)
 
         # Target Thresholds
-        self.targetPT = self.args["targetPT"] or 500 * u.MeV
+        self.targetPT = self.args["targetPT"] or 1 * u.GeV
         self.targetHitsPixel = self.args["targetHitsPixel"] or 3
         self.minHitsTotal = self.args["minHitsTotal"] or 7
 
@@ -137,10 +137,9 @@ class Pipeline(acts.examples.Sequencer):
         self.targetParticleSelectorConfig = ParticleSelectorConfig(
             removeNeutral=True,
             pt=(self.targetPT, None),
+            rho=(0,1*u.mm),
+            absZ=(0,150*u.mm),
             measurements=(self.minHitsTotal, None),
-            # measurementGeometrySelection=acts.examples.readJsonGeometryList(
-            #     str(self.geoSelectionPixels)
-            # ),
         )
 
         # For all CKFs:
@@ -272,7 +271,7 @@ class Pipeline(acts.examples.Sequencer):
         )
 
         self.addAlgorithm(
-            acts.examples.MeasurementMapSelectorAlgorithm(
+            acts.examples.MeasurementMapSelector(
                 level=acts.logging.INFO,
                 inputSourceLinks="sourcelinks",
                 inputMeasurementParticleMap="measurement_particles_map",
@@ -306,19 +305,18 @@ class Pipeline(acts.examples.Sequencer):
             self.targetParticleSelectorConfig,
             inputParticles="particle_selection_from_truth_seeding",
             inputMeasurementParticlesMap="measurement_particles_map",
-            inputMeasurements="measurements",
             outputParticles=self.target_particles_key,
             logLevel=acts.logging.INFO,
         )
 
         self.addWhiteboardAlias("particles_selected", self.target_particles_key)
 
-    def _addRootWriter(self, workflow_stem, trajectories_key, seeds_key):
+    def _addRootWriter(self, workflow_stem, tracks_key, seeds_key):
         """
         Helper function to add Root-based writers for
         - Seeding performance
         - Tracking performance
-        - Trajectory Summary
+        - Track Summary
         """
         self.addWriter(
             acts.examples.SeedingPerformanceWriter(
@@ -338,7 +336,7 @@ class Pipeline(acts.examples.Sequencer):
             acts.examples.CKFPerformanceWriter(
                 level=acts.logging.ERROR,
                 inputParticles=self.target_particles_key,
-                inputTrajectories=trajectories_key,
+                inputTracks=tracks_key,
                 inputMeasurementParticlesMap="measurement_particles_map",
                 filePath=self.outputDir / f"performance_{workflow_stem}.root",
                 effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
@@ -348,13 +346,14 @@ class Pipeline(acts.examples.Sequencer):
                 fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
                     self.binningCfg
                 ),
+                doubleMatching=True,
             )
         )
 
         self.addWriter(
-            acts.examples.RootTrajectorySummaryWriter(
+            acts.examples.RootTrackSummaryWriter(
                 level=acts.logging.ERROR,
-                inputTrajectories=trajectories_key,
+                inputTracks=tracks_key,
                 inputParticles=self.target_particles_key,
                 inputMeasurementParticlesMap="measurement_particles_map",
                 filePath=self.outputDir / f"tracksummary_{workflow_stem}.root",
@@ -389,7 +388,6 @@ class Pipeline(acts.examples.Sequencer):
             outputDirRoot=None,
         )
 
-        # internally converts tracks to trajectories
         addCKFTracks(
             self,
             self.trackingGeometry,
@@ -401,7 +399,7 @@ class Pipeline(acts.examples.Sequencer):
         self._addRootWriter(
             workflow_stem="standard_ckf",
             seeds_key="seeds",
-            trajectories_key="trajectories",
+            tracks_key="tracks",
         )
 
     def addProofOfConceptWorkflow(self):
@@ -471,7 +469,7 @@ class Pipeline(acts.examples.Sequencer):
 
         trkConfig = {
             "level": acts.logging.INFO,
-            "cleanSubgraphs": self.args["cleanSubgraphs"] or False,
+            #"cleanSubgraphs": self.args["cleanSubgraphs"] or False,
         }
 
         graphConstructor = acts.examples.TorchMetricLearning(**metricLearningConfig)
@@ -501,7 +499,6 @@ class Pipeline(acts.examples.Sequencer):
                 clusterXScale=-1.0,
                 clusterYScale=-1.0,
                 targetMinPT=self.targetPT,
-                useGPUsParallel=True,
             )
         )
 
@@ -531,9 +528,10 @@ class Pipeline(acts.examples.Sequencer):
         pars_key = f"{workflow_stem}_estimated_parameters"
 
         self.addAlgorithm(
-            acts.examples.PrototracksToParsAndSeeds(
+            acts.examples.PrototracksToParameters(
                 level=acts.logging.INFO,
                 geometry=self.trackingGeometry,
+                magneticField=self.field,
                 inputSpacePoints="pixel_spacepoints",
                 inputProtoTracks=prototracks_key,
                 outputSeeds=seed_key,
@@ -592,17 +590,8 @@ class Pipeline(acts.examples.Sequencer):
             logLevel=acts.logging.DEBUG,  # To see new size
         )
 
-        traj_key = f"{workflow_stem}_final_trajectories_selected"
-        self.addAlgorithm(
-            acts.examples.TracksToTrajectories(
-                level=acts.logging.INFO,
-                inputTracks=tracks_selected_key,
-                outputTrajectories=traj_key,
-            )
-        )
-
         self._addRootWriter(
-            workflow_stem=workflow_stem, seeds_key=seed_key, trajectories_key=traj_key
+            workflow_stem=workflow_stem, seeds_key=seed_key, tracks_key=tracks_selected_key
         )
 
     def _addProtoTrackEfficiency(self, prototracks_key):
@@ -695,19 +684,11 @@ class Pipeline(acts.examples.Sequencer):
             logLevel=acts.logging.INFO,
         )
 
-        self.addAlgorithm(
-            acts.examples.TracksToTrajectories(
-                level=acts.logging.INFO,
-                inputTracks="kalman_truth_tracks_selected",
-                outputTrajectories="final_trajectories_kalman",
-            )
-        )
-
         self.addWriter(
             acts.examples.CKFPerformanceWriter(
                 level=acts.logging.WARNING,
                 inputParticles=self.target_particles_key,
-                inputTrajectories="final_trajectories_kalman",
+                inputTracks="kalman_truth_tracks_selected",
                 inputMeasurementParticlesMap="measurement_particles_map",
                 filePath=str(self.outputDir / ("performance_truth_kalman.root")),
                 effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
@@ -717,5 +698,6 @@ class Pipeline(acts.examples.Sequencer):
                 fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
                     self.binningCfg
                 ),
+                doubleMatching=True,
             )
         )

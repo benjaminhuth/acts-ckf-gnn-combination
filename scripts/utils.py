@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plotTEfficency(tefficency, ax, **errorbar_kwargs):
+def plotTEfficency(tefficency, ax, no_yerr=False, **errorbar_kwargs):
     th1 = tefficency.GetTotalHistogram()
 
     bins = [i for i in range(th1.GetNbinsX()) if th1.GetBinContent(i) > 0.0]
@@ -19,6 +19,10 @@ def plotTEfficency(tefficency, ax, **errorbar_kwargs):
     y_err_lo = [tefficency.GetEfficiencyErrorLow(i) for i in bins]
     y_err_hi = [tefficency.GetEfficiencyErrorUp(i) for i in bins]
 
+    if no_yerr:
+        y_err_lo = len(bins)*[0]
+        y_err_hi = len(bins)*[0]
+
     ax.errorbar(
         x, y, yerr=(y_err_lo, y_err_hi), xerr=(x_err_lo, x_err_hi), **errorbar_kwargs
     )
@@ -26,7 +30,7 @@ def plotTEfficency(tefficency, ax, **errorbar_kwargs):
 
 
 def subplots(nrow, ncol, snakemake):
-    plt.rcParams.update({"font.size": snakemake.config["plot_fontsize"]})
+    # plt.rcParams.update({"font.size": snakemake.config["plot_fontsize"]})
     figsize = (
         ncol * snakemake.config["plot_width"],
         nrow * snakemake.config["plot_height"],

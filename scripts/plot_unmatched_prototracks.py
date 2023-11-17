@@ -7,6 +7,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import awkward as ak
 import uproot
+import tqdm
 
 import acts
 
@@ -14,9 +15,10 @@ from gnn4itk_tools.detector_plotter import DetectorPlotter
 
 
 class PrototrackPlotter(DetectorPlotter):
-    def __init__(self, graph):
+    def __init__(self, graph, particles):
         super().__init__(snakemake.input[0], r_max=200, abs_z_max=1500)
         self.graph = graph
+        self.particles = particles
 
     def plot_prototrack(
         self,
@@ -39,18 +41,25 @@ class PrototrackPlotter(DetectorPlotter):
             colors = [color_dict[pid] for pid in prototrack.particle_id]
 
         # prototrack
-        prototrack = prototrack.copy()
         prototrack["r"] = np.hypot(prototrack.x, prototrack.y)
 
         pids, counts = np.unique(prototrack.particle_id, return_counts=True)
+        maj_pid = pids[np.argmax(counts)]
         pur = max(counts) / len(prototrack)
+
+        try:
+            total_meas = self.particles[ self.particles.particle_id == maj_pid ].iloc[0].n_measurements
+        except:
+            total_meas = "<not found>"
 
         # make A4 sheet
         fig, ax = self.get_fig_ax(figsize=(8.27, 11.67), ax_config=(2, 1))
 
         fig.suptitle(
-            "Prototrack with ID {} and length {}, particles: {}, purity: {:.1%}".format(
-                str(prototrack.trackId.to_list()[0]), len(prototrack), len(pids), pur
+            "Prototrack with ID {} and length {}, "
+            "particles: {}, purity: {:.1%}\n"
+            "maj pid: {}, total measurements: {}".format(
+                str(prototrack.trackId.to_list()[0]), len(prototrack), len(pids), pur, maj_pid, total_meas
             )
         )
 
@@ -147,6 +156,8 @@ class PrototrackPlotter(DetectorPlotter):
 # Matching df
 match_df = pd.read_csv(snakemake.input[3], dtype={"particle_id": np.uint64})
 match_df = match_df[match_df.event == 0].copy()
+meff = sum(match_df.matched) / len(match_df.matched)
+print(f"matching efficiency: {meff:.2%}")
 
 # Particles
 particles = ak.to_dataframe(
@@ -158,19 +169,30 @@ particles = particles[particles.particle_id.isin(match_df.particle_id)].copy()
 particles["matched"] = particles.particle_id.map(
     dict(zip(match_df.particle_id, match_df.matched))
 )
+particles = particles.drop(columns=["vertex_primary", "vertex_secondary", "particle", "generation", "sub_particle"])
 assert not any(pd.isna(particles.matched))
 
 # Hits
 hits = uproot.open(f"{snakemake.input[2]}:hits").arrays(library="pd")
 hits = hits[(hits.event_id == 0) & (hits.tt < 25.0)].copy()
 hits["hit_id"] = np.arange(len(hits))
-hits.head(2)
 
 # Digi
 simhit_map = pd.read_csv(snakemake.input[4])
 measId_to_hitID = dict(zip(simhit_map.measurement_id, simhit_map.hit_id))
 hitId_to_particleId = dict(zip(hits.hit_id, hits.particle_id))
-spacepoints = pd.read_csv(snakemake.input[5])
+
+# Count overall measurements
+measId_particleId_df = pd.DataFrame()
+measId_particleId_df["measurement_id"] = simhit_map.measurement_id
+measId_particleId_df["particle_id"] = measId_particleId_df["measurement_id"].map({ m: hitId_to_particleId[ measId_to_hitID[m] ] for m in simhit_map.measurement_id })
+
+particle_meas_count_df = measId_particleId_df.groupby("particle_id").count().reset_index()
+particles["n_measurements"] = particles.particle_id.map(dict(zip(particle_meas_count_df.particle_id, particle_meas_count_df.measurement_id)))
+
+print(particles.head(5))
+print("min measurments: ", min(particles.n_measurements))
+print("min pT: ", min(particles.pt))
 
 # Prototracks
 prototracks = pd.read_csv(snakemake.input[6])
@@ -184,6 +206,7 @@ prototracks["geometry_id"] = prototracks.hit_id.map(
 prototracks["particle_id"] = prototracks.hit_id.map(hitId_to_particleId)
 
 # Graph
+spacepoints = pd.read_csv(snakemake.input[5])
 graph = pd.read_csv(snakemake.input[7])
 
 for edge, poscols in [("edge0", ["x0", "y0", "z0"]), ("edge1", ["x1", "y1", "z1"])]:
@@ -197,30 +220,30 @@ graph["r1"] = np.hypot(graph.x1, graph.y1)
 
 # Make interesting collection
 particles_not_matched = particles[particles.matched == 0].reset_index()
-prototracks_all_not_matched = [
-    t
-    for _, t in prototracks[
-        prototracks.trackId.isin(
-            np.unique(
-                prototracks[
-                    prototracks.particle_id.isin(particles_not_matched.particle_id)
-                ].trackId
-            )
-        )
-    ].groupby("trackId")
-]
-prototracks_all_not_matched = sorted(prototracks_all_not_matched, key=lambda t: len(t))
-prototracks_all_not_matched.reverse()
+print("Unmatched particles", len(particles_not_matched))
+
+prototrack_list = [t for _, t in prototracks.groupby("trackId")]
+
+def has_unmatched_particle(t):
+    return t.particle_id.isin(particles_not_matched.particle_id).any()
+
+l = len(prototrack_list)
+prototrack_list = [t for t in prototrack_list if has_unmatched_particle(t) ]
+print(f"Keep only tracks with at least one hit of a unmatched particle: {l} -> {len(prototrack_list)}")
+
+prototrack_list = sorted(prototrack_list, key=lambda t: len(t))
+prototrack_list.reverse()
 
 # Plot to pdf
 pdf = PdfPages(snakemake.output[0])
-plotter = PrototrackPlotter(graph)
+plotter = PrototrackPlotter(graph, particles)
 
 plt.rcParams.update({"font.size": 14})
 
-for i in range(min(20, len(prototracks_all_not_matched))):
-    fig, ax = plotter.plot_prototrack(prototracks_all_not_matched[i])
+for i in tqdm.tqdm(range(min(50, len(prototrack_list))), desc="make pdf"):
+    fig, ax = plotter.plot_prototrack(prototrack_list[i].copy())
     fig.tight_layout()
     pdf.savefig(fig)
+    plt.close(fig)
 
 pdf.close()
