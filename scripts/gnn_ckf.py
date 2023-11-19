@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--output", "-o", help="output path", type=str, default="./output")
     parser.add_argument("--seed", help="Random seed", type=int, default=42)
     parser.add_argument("--digi", default="mixed")
+    parser.add_argument("--gnngeosel", type=str)
     parser.add_argument("--targetPT", type=float, default=0.5)
     parser.add_argument("--targetHitsPixel", type=int, default=3)
     parser.add_argument("--minHitsTotal", type=int, default=7)
@@ -50,6 +51,7 @@ def main():
     parser.add_argument('--cuts', nargs='+', type=float, default=[0.5,0.5])
     parser.add_argument('--ckfChi2Cut', type=float, default=15.0)
     parser.add_argument('--ckfNCandidates', type=int, default=10)
+    parser.add_argument('--runNoCombinatorics', action="store_true", default=False)
     # fmt: on
 
     args = vars(parser.parse_args())
@@ -70,7 +72,10 @@ def main():
     if args["run_proof_of_concept"]:
         pipeline.addProofOfConceptWorkflow()
     if args["run_gnn"]:
-        pipeline.addExaTrkXWorkflow(add_eff_printer=add_hist_printing)
+        pipeline.addExaTrkXWorkflow(
+            add_eff_printer=add_hist_printing,
+            add_no_combinatorics_run=args["runNoCombinatorics"],
+        )
     if args["run_truth_kalman"]:
         pipeline.addTruthTrackingKalman()
 

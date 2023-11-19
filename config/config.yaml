@@ -1,8 +1,8 @@
-n_events: 20
+n_events: 50
 n_sim_jobs: 10
 n_inference_jobs: 10
 
 plt_show: False #True
-plot_width: 6
-plot_height: 4.5
+plot_width: 5
+plot_height: 4
 plot_fontsize: 16

@@ -6,28 +6,26 @@ configfile: "config/config.yaml"
 RECO_TYPES = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept", "truth_kalman"]
 RECO_TYPES_NO_TT = ["standard_ckf", "gnn_plus_ckf", "proof_of_concept"]
 
-DEFAULT_DIGI="detector/odd-digi-mixed-config-125thickness.json"
+PIXEL_DIGI="detector/odd-digi-mixed-config-125thickness.json"
+PIXEL_SELECTION="detector/odd-geo-selection-pixels.json"
 
 DIGI_CONFIG_FILE = {
-    "fixed_digi_1GNN": DEFAULT_DIGI,
-    "fixed_digi_1GNN_no_c": DEFAULT_DIGI,
-    "fixed_digi_2GNN": DEFAULT_DIGI,
-    "fixed_digi_2GNN_no_c": DEFAULT_DIGI,
-    "fixed_digi_2GNN_neg_weights": DEFAULT_DIGI,
+    "fixed_digi_1GNN": PIXEL_DIGI,
+    "fixed_digi_2GNN": PIXEL_DIGI,
+    "fixed_digi_2GNN_neg_weights": PIXEL_DIGI,
+    "with_ssbarrel": "detector/odd-digi-mixed-config-ssbarrel.json",
+}
+GEO_SELECTION = {
+    "fixed_digi_1GNN": PIXEL_SELECTION,
+    "fixed_digi_2GNN": PIXEL_SELECTION,
+    "fixed_digi_2GNN_neg_weights": PIXEL_SELECTION,
+    "with_ssbarrel": "detector/odd-geo-selection-pixels-ssbarrel.json",
 }
 CLASSIFIER_CUTS = {
     "fixed_digi_1GNN": [0.5, 0.5],
-    "fixed_digi_1GNN_no_c": [0.5, 0.5],
     "fixed_digi_2GNN": [0.05, 0.01, 0.5],
-    "fixed_digi_2GNN_no_c": [0.05, 0.01, 0.5],
     "fixed_digi_2GNN_neg_weights": [0.05, 0.01, 0.5],
-}
-CKF_CANDIDATES = {
-    "fixed_digi_1GNN": 10,
-    "fixed_digi_2GNN": 10,
-    "fixed_digi_2GNN_neg_weights": 10,
-    "fixed_digi_1GNN_no_c": 1,
-    "fixed_digi_2GNN_no_c": 1,
+    "with_ssbarrel": [0.05, 0.01, 0.5],
 }
 
 envvars:
@@ -49,7 +47,7 @@ rule inference:
     input:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
-        lambda wildcards: f"torchscript/{wildcards.models.replace('_no_c', '')}/gnn.pt",
+        lambda wildcards: f"torchscript/{wildcards.models}/gnn.pt",
     log:
         "tmp/{models}/logs/inference.log",
     output:
@@ -66,6 +64,7 @@ rule inference:
             "tmp/{{models}}/tracksummary_{type}.root",
             type=RECO_TYPES_NO_TT,
         ),
+        "tmp/{models}/performance_gnn_plus_ckf_no_c.root",
         "tmp/{models}/digi/event000000000-measurements.csv",
         "tmp/{models}/digi/event000000000-measurement-simhit-map.csv",
         "tmp/{models}/digi/event000000000-cells.csv",
@@ -75,10 +74,11 @@ rule inference:
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
+        geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
         cuts=lambda wildcards: " ".join(
             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
         ),
-        ckf_candidates=lambda wildcards: CKF_CANDIDATES[wildcards.models],
+        ckf_candidates=lambda wildcards: 1 if 'no_c' in wildcards.models else 10,
         models=lambda wildcards: wildcards.models.replace("_no_c", "")
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
@@ -88,26 +88,29 @@ rule inference:
         "   -i tmp/simdata "
         "   -ckf -km -gnn -poc "
         "   --digi={params.digi} "
+        "   --gnngeosel={params.geosel} "
         "   --modeldir=torchscript/{params.models} "
         "   --ckfNCandidates={params.ckf_candidates} "
         "   --minEnergyDeposit=3.65e-06 "
         "   --targetPT=1.0 "
-        "   --cuts {params.cuts} 2>&1 | tee {log}"
+        "   --runNoCombinatorics"
+        "   --cuts {params.cuts} 2>&1 | tee {log} "
 
 rule inference_score_sweep:
     input:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
-        lambda wildcards: f"torchscript/{wildcards.models.replace('_no_c', '')}/gnn.pt",
+        lambda wildcards: f"torchscript/{wildcards.models}/gnn.pt",
     output:
         "tmp/{models}/score_sweep/performance_gnn_plus_ckf_{score}.csv",
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
+        geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
         cuts=lambda wildcards: " ".join(
             [ str(c) for c in CLASSIFIER_CUTS[wildcards.models][:-1] ] + [ wildcards.score ]
         ),
-        ckf_candidates=lambda wildcards: CKF_CANDIDATES[wildcards.models],
+        ckf_candidates=lambda wildcards: 1 if 'no_c' in wildcards.models else 10,
         models=lambda wildcards: wildcards.models.replace("_no_c", "")
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
@@ -117,6 +120,7 @@ rule inference_score_sweep:
         "   -i tmp/simdata "
         "   -gnn "
         "   --digi={params.digi} "
+        "   --gnngeosel={params.geosel} "
         "   --modeldir=torchscript/{params.models} "
         "   --ckfNCandidates={params.ckf_candidates} "
         "   --minEnergyDeposit=3.65e-06 "
@@ -137,6 +141,7 @@ rule inference_cpu_for_timing:
         "tmp/{models}/cpu/timing.tsv",
     params:
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
+        geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
         cuts=lambda wildcards: " ".join(
             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
         ),
@@ -147,6 +152,7 @@ rule inference_cpu_for_timing:
         "   -i tmp/simdata "
         "   -gnn "
         "   --digi={params.digi} "
+        "   --gnngeosel={params.geosel} "
         "   --modeldir=torchscript/{wildcards.models} "
         "   --minEnergyDeposit=3.65e-06 "
         "   --targetPT=1.0 "
@@ -157,7 +163,7 @@ rule inference_for_timing:
     input:
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
-        "torchscript/{models}/gnn.pt",
+        lambda wildcards: f"torchscript/{wildcards.models}/gnn.pt",
     log:
         "tmp/{models}/logs/inference_timing.log",
     output:
@@ -165,6 +171,7 @@ rule inference_for_timing:
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
+        geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
         cuts=lambda wildcards: " ".join(
             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
         ),
@@ -175,6 +182,7 @@ rule inference_for_timing:
         "   -i tmp/simdata "
         "   -ckf -gnn -poc "
         "   --digi={params.digi} "
+        "   --gnngeosel={params.geosel} "
         "   --modeldir=torchscript/{wildcards.models} "
         "   --minEnergyDeposit=3.65e-06 "
         "   --targetPT=1.0 "
@@ -185,6 +193,8 @@ rule performance_plots:
         expand("tmp/{{models}}/performance_{type}.root", type=RECO_TYPES),
     output:
         "plots/{models}/perf_plots.pdf",
+    params:
+        with_pt=False,
     script:
         "scripts/make_perf_plots.py"
 
@@ -313,17 +323,35 @@ rule embedding_tsne:
         "scripts/plot_embedding_TSNE.py"
 
 
-rule timing_plots:
+rule timing_plots_fullchain:
     input:
         "tmp/{models}/timing/timing.tsv",
         "tmp/{models}/cpu/timing.tsv",
-        "tmp/{models}/logs/inference_timing.log",
     output:
         "plots/{models}/timinig_plot.pdf",
+    script:
+        "scripts/plot_timing_full_chain.py"
+
+rule timing_plots_pipeline:
+    input:
+        "tmp/{models}/timing/timing.tsv",
+        "tmp/{models}/logs/inference_timing.log",
+    output:
         "plots/{models}/timinig_plot_detail.pdf",
     script:
-        "scripts/plot_timing.py"
+        "scripts/plot_timing_pipeline.py"
 
+
+rule timing_plots_pipeline_crosscomp:
+    input:
+        "tmp/{modelsA}/timing/timing.tsv",
+        "tmp/{modelsA}/logs/inference_timing.log",
+        "tmp/{modelsB}/timing/timing.tsv",
+        "tmp/{modelsB}/logs/inference_timing.log",
+    output:
+        "plots/crosscomp/timinig_pipeline_{modelsA}_vs_{modelsB}.pdf",
+    script:
+        "scripts/plot_timing_crosscomp_pipelines.py"
 
 rule combine_trackeff_score_sweep:
     input:
@@ -337,15 +365,17 @@ rule combine_trackeff_score_sweep:
 rule compare_no_combinatorics:
     input:
         "tmp/{models}/performance_gnn_plus_ckf.root",
-        "tmp/{models}_no_c/performance_gnn_plus_ckf.root",
+        "tmp/{models}/performance_gnn_plus_ckf_no_c.root",
     output:
-        "plots/crosscomp/compare_{models}_with_without_c.pdf",
+        "plots/{models}/perf_plots_with_without_c.pdf",
+    params:
+        with_pt=False,
     script:
         "scripts/make_perf_cross_comparison.py"
 
 
-MODELS = ["fixed_digi_2GNN"]
-MODELS_PLUS = ["fixed_digi_1GNN", "fixed_digi_2GNN", "fixed_digi_2GNN_neg_weights"]
+MODELS = ["fixed_digi_2GNN", "with_ssbarrel"]
+MODELS_PLUS = ["fixed_digi_1GNN", "fixed_digi_2GNN", "with_ssbarrel"]
 
 
 rule cross_comparison:
@@ -353,12 +383,14 @@ rule cross_comparison:
         expand("tmp/{models}/performance_gnn_plus_ckf.root", models=MODELS_PLUS),
     output:
         "plots/crosscomp/perf_cross_comparison.pdf",
+    params:
+        with_pt=False,
     script:
         "scripts/make_perf_cross_comparison.py"
 
 rule cross_compare_score_sweep:
     input:
-        expand("tmp/{models}/score_sweep/result.csv", models=MODELS),
+        expand("tmp/{models}/score_sweep/result.csv", models=["fixed_digi_2GNN", "fixed_digi_1GNN"]),
     output:
         "plots/crosscomp/trackeff_score_sweep.pdf",
     script:
@@ -379,8 +411,10 @@ rule all:
         expand("plots/{models}/timinig_plot.pdf", models=MODELS),
         expand("plots/{models}/timinig_plot_detail.pdf", models=MODELS),
         expand("plots/{models}/seeding_plot.pdf", models=MODELS),
-        expand("plots/crosscomp/compare_{models}_with_without_c.pdf", models=MODELS),
+        expand("plots/{models}/perf_plots_with_without_c.pdf", models=MODELS),
         expand("latex/{models}_particle_types_eff.tex", models=MODELS),
         "plots/fixed_digi_2GNN/embedding_2D_repr.pdf",
         "plots/crosscomp/perf_cross_comparison.pdf",
-        "plots/crosscomp/trackeff_score_sweep.pdf",
+        f"plots/crosscomp/timinig_pipeline_{MODELS[0]}_vs_{MODELS[1]}.pdf",
+#         f"plots/crosscomp/timinig_pipeline_{MODELS[0]}_no_c_vs_{MODELS[1]}_no_c.pdf",
+#         "plots/crosscomp/trackeff_score_sweep.pdf",

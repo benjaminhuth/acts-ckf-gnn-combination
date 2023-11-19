@@ -41,8 +41,13 @@ def replace_key_text(key):
 
     return key
 
+if snakemake.params["with_pt"]:
+    ncols = 2
+else:
+    ncols = 1
+    plot_keys = plot_keys[:3]
 
-fig, axes = utils.subplots(2, 3, snakemake)
+fig, axes = utils.subplots(ncols, 3, snakemake)
 
 
 for input_file in snakemake.input:
@@ -86,7 +91,7 @@ for input_file in snakemake.input:
 #         ax.set_yscale('log')
 #         ax.set_ylim(1e-2, 1)
 
-axes[0][0].legend(loc="lower left")
+axes.flatten()[0].legend(loc="lower left")
 
 fig.tight_layout()
 fig.savefig(snakemake.output[0])

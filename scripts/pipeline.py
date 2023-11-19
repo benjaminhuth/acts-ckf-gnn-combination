@@ -92,7 +92,7 @@ class Pipeline(acts.examples.Sequencer):
         self.geoSelectionSeeding = oddDir / "config/odd-seeding-config.json"
         assert os.path.exists(self.geoSelectionSeeding)
 
-        self.geoSelectionPixels = baseDir / "detector/odd-geo-selection-pixels.json"
+        self.geoSelectionPixels = Path(args["gnngeosel"])
         assert os.path.exists(self.geoSelectionPixels)
 
         if "digi" in args:
@@ -159,8 +159,8 @@ class Pipeline(acts.examples.Sequencer):
         # Binning cfg for plots
         self.binningCfg = {
             "Pt": acts.examples.Binning("pT [GeV/c]", list(np.logspace(-1, 2, 25))),
-            "Eta": acts.examples.Binning("#eta", 25, -3.5, 3.5),
-            "Phi": acts.examples.Binning("#phi", 100, -3.15, 3.15),
+            "Eta": acts.examples.Binning("#eta", 25, -3.5, -3.5),
+            "Phi": acts.examples.Binning("#phi", 50, -3.15, 3.15),
             "Num": acts.examples.Binning("N", 30, -0.5, 29.5),
         }
 
@@ -420,9 +420,9 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
-        self._addTrackFindingFromPrototracks(prototrack_key, workflow_stem)
+        self._addTrackFindingFromPrototracks(prototrack_key, workflow_stem, self.measurementSelectorCfg)
 
-    def addExaTrkXWorkflow(self, add_eff_printer=False):
+    def addExaTrkXWorkflow(self, add_eff_printer=False, add_no_combinatorics_run=False):
         """
         Add the exatrkx-based workflow.
         """
@@ -510,12 +510,19 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
-        self._addTrackFindingFromPrototracks(prototrack_key, workflow_stem)
+        self._addTrackFindingFromPrototracks(prototrack_key, workflow_stem, self.measurementSelectorCfg)
+
+        if add_no_combinatorics_run:
+            chi2Cut = self.args["ckfChi2Cut"] if "ckfChi2Cut" in self.args else 15.0
+            selCfg = acts.MeasurementSelector.Config(
+                [(acts.GeometryIdentifier(), ([], [chi2Cut], [1]))]
+            )
+            self._addTrackFindingFromPrototracks(prototrack_key, workflow_stem + "_no_c", selCfg)
 
         if add_eff_printer:
             self._addProtoTrackEfficiency(prototrack_key)
 
-    def _addTrackFindingFromPrototracks(self, prototracks_key, workflow_stem):
+    def _addTrackFindingFromPrototracks(self, prototracks_key, workflow_stem, meas_sel_cfg):
         """
         Internal helper function to add the trackfinding for prototracks.
         Used both in proof-of-concept workflow and GNN-based workflow
@@ -570,7 +577,7 @@ class Pipeline(acts.examples.Sequencer):
                 inputSourceLinks="sourcelinks",
                 inputInitialTrackParameters=pars_key,
                 outputTracks=tracks_key,
-                measurementSelectorCfg=self.measurementSelectorCfg,
+                measurementSelectorCfg=meas_sel_cfg,
                 trackingGeometry=self.trackingGeometry,
                 magneticField=self.field,
                 findTracks=acts.examples.TrackFindingAlgorithm.makeTrackFinderFunction(

@@ -7,6 +7,7 @@ import warnings
 
 import pandas as pd
 import awkward as ak
+import numpy as np
 import uproot
 
 from gnn4itk_cf.stages.data_reading.models.acts_reader import ActsReader
@@ -46,8 +47,14 @@ class ModifiedActsReader(ActsReader):
             hits = hits.copy()
 
             measurements = pd.read_csv(digi_dir / f"{stem}-measurements.csv")
+            cells = pd.read_csv(digi_dir / f"{stem}-cells.csv")
+            cells["volume_id"] = cells.geometry_id.map(geoid_to_volume)
+
+            valid_volumes = np.unique(cells.volume_id)
+            print("Have cells in volumes", valid_volumes)
+
             measurements = measurements[
-                measurements.geometry_id.map(geoid_to_volume).isin([16, 17, 18])
+                measurements.geometry_id.map(geoid_to_volume).isin(valid_volumes)
             ].copy()
             measurements.to_csv(raw_dir / f"{stem}-measurements.csv", index=False)
 

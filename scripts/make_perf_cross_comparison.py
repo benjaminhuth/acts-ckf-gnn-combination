@@ -8,11 +8,10 @@ import matplotlib.pyplot as plt
 from itertools import cycle
 from pathlib import Path
 
-from utils import plotTEfficency
+from utils import *
 
 plt.rcParams.update({"font.size": 12})
 
-fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
 plot_keys = [
     "trackeff_vs_eta",
@@ -22,6 +21,15 @@ plot_keys = [
     "duplicationRate_vs_pT",
     "fakerate_vs_pT",
 ]
+
+
+if snakemake.params["with_pt"]:
+    ncols = 2
+else:
+    ncols = 1
+    plot_keys = plot_keys[:3]
+
+fig, axes = subplots(ncols, 3, snakemake)
 
 replace_dict = {
     "_": " ",
@@ -57,12 +65,13 @@ for ax, key in zip(axes.flatten(), plot_keys):
         ax.set_xlabel("$p_T$ [GeV]")
     elif "_eta" in key:
         ax.set_xlabel("$\eta$")
+        ax.set_xlim(-3.5, 3.5)
 
     ax.set_title(replace_key_text(key))
     ax.set_ylim(0, 1)
 
 
-axes[0,0].legend(loc="lower left")
+axes.flatten()[0].legend(loc="lower left")
 
 fig.tight_layout()
 
