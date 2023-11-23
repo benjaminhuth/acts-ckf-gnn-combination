@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 import utils
-from utils import plotTEfficency
+from utils import plot_perf_root_file
 
 color_dict = {
     "performance_proof_of_concept.root": "tab:green",
@@ -26,29 +26,18 @@ plot_keys = [
     "fakerate_vs_pT",
 ]
 
-replace_dict = {
-    "_": " ",
-    "eta": "$\eta$",
-    "pT": "$p_T$",
-    "duplicationRate" : "duplication rate",
-    "fakerate" : "fake rate",
-    "trackeff" : "matching efficiency",
-}
-
-def replace_key_text(key):
-    for a, b in replace_dict.items():
-        key = key.replace(a, b)
-
-    return key
-
 if snakemake.params["with_pt"]:
     ncols = 2
 else:
     ncols = 1
     plot_keys = plot_keys[:3]
 
-fig, axes = utils.subplots(ncols, 3, snakemake)
+print("Perf plots for keys:",plot_keys)
 
+fig, axes = utils.subplots(ncols, 3, snakemake)
+axes = axes.flatten()
+
+assert len(axes) == len(plot_keys)
 
 for input_file in snakemake.input:
     performance_file = ROOT.TFile.Open(input_file)
@@ -57,41 +46,9 @@ for input_file in snakemake.input:
     label = name.replace("_", " ").replace("plus", "&").replace(".root", "").replace("performance", "").strip()
     color = color_dict[name]
 
-    for ax, key in zip(axes.flatten(), plot_keys):
-        no_yerr=True if "kalman" in name and "pT" in key else False
-        plotTEfficency(
-            performance_file.Get(key),
-            ax,
-            no_yerr=no_yerr,
-            fmt="none",
-            color=color,
-            label=label,
-        )
+    plot_perf_root_file(axes, plot_keys, performance_file, label, color, eff_min=0.5, fake_max=0.5)
 
-        if "_pT" in key:
-            ax.set_xscale("log")
-            ax.set_xlim(0.9e0, 1.1e2)
-            ax.set_xticks([1.0, 3.0, 10.0, 30.0, 100.0])
-            ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-            ax.set_xlabel("$p_T$ [GeV]")
-        elif "_eta" in key:
-            ax.set_xlabel("$\eta$")
-            ax.set_xlim(-3.5, 3.5)
-
-        ax.set_title(replace_key_text(key))
-        ax.set_ylim(0, 1)
-
-        # if "fake" in key:
-        #     ax.legend(loc="upper right")
-        # else:
-        #     ax.legend(loc="lower left")
-
-# for ax in axes.flatten():
-#     if "dup" in ax.get_title() or "fake" in ax.get_title():
-#         ax.set_yscale('log')
-#         ax.set_ylim(1e-2, 1)
-
-axes.flatten()[0].legend(loc="lower left")
+axes[0].legend(loc="lower left")
 
 fig.tight_layout()
 fig.savefig(snakemake.output[0])

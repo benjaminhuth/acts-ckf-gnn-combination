@@ -10,22 +10,22 @@ PIXEL_DIGI="detector/odd-digi-mixed-config-125thickness.json"
 PIXEL_SELECTION="detector/odd-geo-selection-pixels.json"
 
 DIGI_CONFIG_FILE = {
-    "fixed_digi_1GNN": PIXEL_DIGI,
-    "fixed_digi_2GNN": PIXEL_DIGI,
-    "fixed_digi_2GNN_neg_weights": PIXEL_DIGI,
-    "with_ssbarrel": "detector/odd-digi-mixed-config-ssbarrel.json",
+    "pixel_only_1GNN": PIXEL_DIGI,
+    "pixel_only_2GNN": PIXEL_DIGI,
+    "pixel_only_2GNN_neg_weights": PIXEL_DIGI,
+    "with_ssbarrel_2GNN": "detector/odd-digi-mixed-config-ssbarrel.json",
 }
 GEO_SELECTION = {
-    "fixed_digi_1GNN": PIXEL_SELECTION,
-    "fixed_digi_2GNN": PIXEL_SELECTION,
-    "fixed_digi_2GNN_neg_weights": PIXEL_SELECTION,
-    "with_ssbarrel": "detector/odd-geo-selection-pixels-ssbarrel.json",
+    "pixel_only_1GNN": PIXEL_SELECTION,
+    "pixel_only_2GNN": PIXEL_SELECTION,
+    "pixel_only_2GNN_neg_weights": PIXEL_SELECTION,
+    "with_ssbarrel_2GNN": "detector/odd-geo-selection-pixels-ssbarrel.json",
 }
 CLASSIFIER_CUTS = {
-    "fixed_digi_1GNN": [0.5, 0.5],
-    "fixed_digi_2GNN": [0.05, 0.01, 0.5],
-    "fixed_digi_2GNN_neg_weights": [0.05, 0.01, 0.5],
-    "with_ssbarrel": [0.05, 0.01, 0.5],
+    "pixel_only_1GNN": [0.5, 0.5],
+    "pixel_only_2GNN": [0.05, 0.01, 0.5],
+    "pixel_only_2GNN_neg_weights": [0.05, 0.01, 0.5],
+    "with_ssbarrel_2GNN": [0.05, 0.01, 0.5],
 }
 
 envvars:
@@ -132,31 +132,31 @@ rule inference_score_sweep:
         "(cd tmp/{wildcards.models}/score_sweep && rm -r config.json digi gnn_plus_ckf *.root timing.tsv)"
 
 
-rule inference_cpu_for_timing:
-    input:
-        "tmp/simdata/particles_initial.root",
-        "tmp/simdata/hits.root",
-        "torchscript/{models}/gnn.pt",
-    output:
-        "tmp/{models}/cpu/timing.tsv",
-    params:
-        digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
-        geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
-        cuts=lambda wildcards: " ".join(
-            [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
-        ),
-    shell:
-        "CUDA_VISIBLE_DEVICES='' "
-        "python3 scripts/gnn_ckf.py -n3 -j1 "
-        "   -o tmp/{wildcards.models}/cpu "
-        "   -i tmp/simdata "
-        "   -gnn "
-        "   --digi={params.digi} "
-        "   --gnngeosel={params.geosel} "
-        "   --modeldir=torchscript/{wildcards.models} "
-        "   --minEnergyDeposit=3.65e-06 "
-        "   --targetPT=1.0 "
-        "   --cuts {params.cuts}"
+# rule inference_cpu_for_timing:
+#     input:
+#         "tmp/simdata/particles_initial.root",
+#         "tmp/simdata/hits.root",
+#         "torchscript/{models}/gnn.pt",
+#     output:
+#         "tmp/{models}/cpu/timing.tsv",
+#     params:
+#         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
+#         geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
+#         cuts=lambda wildcards: " ".join(
+#             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
+#         ),
+#     shell:
+#         "CUDA_VISIBLE_DEVICES='' "
+#         "python3 scripts/gnn_ckf.py -n3 -j1 "
+#         "   -o tmp/{wildcards.models}/cpu "
+#         "   -i tmp/simdata "
+#         "   -gnn "
+#         "   --digi={params.digi} "
+#         "   --gnngeosel={params.geosel} "
+#         "   --modeldir=torchscript/{wildcards.models} "
+#         "   --minEnergyDeposit=3.65e-06 "
+#         "   --targetPT=1.0 "
+#         "   --cuts {params.cuts}"
 
 
 rule inference_for_timing:
@@ -175,6 +175,7 @@ rule inference_for_timing:
         cuts=lambda wildcards: " ".join(
             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
         ),
+        events=min(config["n_events"], 3),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
         "python3 scripts/gnn_ckf.py -n3 -j1 "
@@ -185,8 +186,11 @@ rule inference_for_timing:
         "   --gnngeosel={params.geosel} "
         "   --modeldir=torchscript/{wildcards.models} "
         "   --minEnergyDeposit=3.65e-06 "
+        "   --runNoCombinatorics"
         "   --targetPT=1.0 "
         "   --cuts {params.cuts} 2>&1 | tee {log}"
+
+
 
 rule performance_plots:
     input:
@@ -326,7 +330,7 @@ rule embedding_tsne:
 rule timing_plots_fullchain:
     input:
         "tmp/{models}/timing/timing.tsv",
-        "tmp/{models}/cpu/timing.tsv",
+#         "tmp/{models}/cpu/timing.tsv",
     output:
         "plots/{models}/timinig_plot.pdf",
     script:
@@ -338,6 +342,7 @@ rule timing_plots_pipeline:
         "tmp/{models}/logs/inference_timing.log",
     output:
         "plots/{models}/timinig_plot_detail.pdf",
+        "plots/{models}/timinig_plot_detail_no_c.pdf",
     script:
         "scripts/plot_timing_pipeline.py"
 
@@ -350,6 +355,7 @@ rule timing_plots_pipeline_crosscomp:
         "tmp/{modelsB}/logs/inference_timing.log",
     output:
         "plots/crosscomp/timinig_pipeline_{modelsA}_vs_{modelsB}.pdf",
+        "plots/crosscomp/timinig_pipeline_{modelsA}_vs_{modelsB}_no_c.pdf",
     script:
         "scripts/plot_timing_crosscomp_pipelines.py"
 
@@ -370,12 +376,14 @@ rule compare_no_combinatorics:
         "plots/{models}/perf_plots_with_without_c.pdf",
     params:
         with_pt=False,
+        labels=lambda wildcards: [wildcards.models, f"{wildcards.models} (no combinatorics)"],
+        colors=["tab:orange", "tab:purple"],
     script:
         "scripts/make_perf_cross_comparison.py"
 
 
-MODELS = ["fixed_digi_2GNN", "with_ssbarrel"]
-MODELS_PLUS = ["fixed_digi_1GNN", "fixed_digi_2GNN", "with_ssbarrel"]
+MODELS = ["pixel_only_2GNN", "with_ssbarrel_2GNN"]
+MODELS_PLUS = ["pixel_only_1GNN", "pixel_only_2GNN", "with_ssbarrel_2GNN"]
 
 
 rule cross_comparison:
@@ -390,7 +398,7 @@ rule cross_comparison:
 
 rule cross_compare_score_sweep:
     input:
-        expand("tmp/{models}/score_sweep/result.csv", models=["fixed_digi_2GNN", "fixed_digi_1GNN"]),
+        expand("tmp/{models}/score_sweep/result.csv", models=["pixel_only_2GNN", "pixel_only_1GNN"]),
     output:
         "plots/crosscomp/trackeff_score_sweep.pdf",
     script:
@@ -400,20 +408,20 @@ rule all:
     default_target: True
     input:
         expand("plots/{models}/edge_eff_eta.pdf", models=MODELS),
-        expand("plots/{models}/scores_pos_neg.pdf", models=MODELS),
+#         expand("plots/{models}/scores_pos_neg.pdf", models=MODELS),
         expand("plots/{models}/perf_plots.pdf", models=MODELS_PLUS),
         expand("plots/{models}/detailed_matching_hist.pdf", models=MODELS),
         expand("plots/{models}/detailed_matching_eff.pdf", models=MODELS),
         expand("plots/{models}/detailed_not_matched_analysis.pdf", models=MODELS),
-        expand("plots/{models}/filter_gnn_score_hists.pdf", models=MODELS),
-        expand("plots/{models}/edge_metrics_history.pdf", models=MODELS),
+#         expand("plots/{models}/filter_gnn_score_hists.pdf", models=MODELS),
+#         expand("plots/{models}/edge_metrics_history.pdf", models=MODELS),
         expand("plots/{models}/largest_unmatched_prototracks.pdf", models=MODELS),
         expand("plots/{models}/timinig_plot.pdf", models=MODELS),
         expand("plots/{models}/timinig_plot_detail.pdf", models=MODELS),
-        expand("plots/{models}/seeding_plot.pdf", models=MODELS),
+#         expand("plots/{models}/seeding_plot.pdf", models=MODELS),
         expand("plots/{models}/perf_plots_with_without_c.pdf", models=MODELS),
-        expand("latex/{models}_particle_types_eff.tex", models=MODELS),
-        "plots/fixed_digi_2GNN/embedding_2D_repr.pdf",
+#         expand("latex/{models}_particle_types_eff.tex", models=MODELS),
+        "plots/pixel_only_2GNN/embedding_2D_repr.pdf",
         "plots/crosscomp/perf_cross_comparison.pdf",
         f"plots/crosscomp/timinig_pipeline_{MODELS[0]}_vs_{MODELS[1]}.pdf",
 #         f"plots/crosscomp/timinig_pipeline_{MODELS[0]}_no_c_vs_{MODELS[1]}_no_c.pdf",

@@ -16,6 +16,7 @@ from tqdm.contrib.concurrent import process_map
 
 import acts
 
+from multiprocessing import Pool
 
 
 
@@ -160,14 +161,28 @@ gnn_ckf_matching_df = pd.read_csv(snakemake.input[5])
 poc_matching_df = pd.read_csv(snakemake.input[6])
 
 # Load events
-matched_df = pd.DataFrame()
+if False:
+    matched_df = pd.DataFrame()
 
-for event_nr in tqdm.tqdm(range(max(hits.event_id)+1), desc="Read events..."):
-    try:
-        matched_df = pd.concat([matched_df, read_event(event_nr, particles, hits, gnn_ckf_matching_df, poc_matching_df)])
-    except Exception as e:
-        print("ERROR reading event", event_nr)
-        print(e)
+    for event_nr in tqdm.tqdm(range(max(hits.event_id)+1), desc="Read events..."):
+        try:
+            matched_df = pd.concat([matched_df, read_event(event_nr, particles, hits, gnn_ckf_matching_df, poc_matching_df)])
+        except Exception as e:
+            print("ERROR reading event", event_nr)
+            print(e)
+else:
+    n = max(hits.event_id)+1
+    dfs = process_map(
+        partial(read_event,
+                particles=particles,
+                hits=hits,
+                gnn_ckf_matching_df=gnn_ckf_matching_df,
+                poc_matching_df=poc_matching_df),
+        range(n),
+        max_workers=(min(n, 32)),
+    )
+
+matched_df = pd.concat(dfs)
 
 assert len(matched_df) > 0
 
@@ -246,21 +261,23 @@ fig.tight_layout()
 fig.savefig(snakemake.output[0])
 
 # Plot as efficiency histograms
-fig, ax = plt.subplots(1, 2, figsize=(15, 6))
+fig, ax = plt.subplots(1, 2, figsize=(15, 5))
 
 plot_as_eff(ax[1], matched_df, conditions, "pt", **pt_opts, **common_opts)
 # ax[1].legend()
 ax[1].set_xscale('log')
 ax[1].set_xlabel("pT [GeV]")
-ax[1].set_title("Detailed matching efficiency vs $p_T$")
+ax[1].set_title("Detailed matching efficiency")
 ax[1].set_xticks([1,3,10,30,100])
 ax[1].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+ax[1].set_ylim(0.6,1.0)
 
 plot_as_eff(ax[0], matched_df, conditions, "eta", **eta_opts, **common_opts)
 ax[0].set_xlabel("$\eta$")
-ax[0].set_title("Detailed matching efficiency vs $\eta$")
+ax[0].set_title("Detailed matching efficiency")
 ax[0].set_xticks(np.arange(-3,4))
 ax[0].legend()
+ax[0].set_ylim(0.6,1.0)
 
 # fig.suptitle(
 #     "{}\nDetailed matching efficiency".format(snakemake.wildcards[0]),

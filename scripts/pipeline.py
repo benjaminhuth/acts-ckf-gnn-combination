@@ -126,8 +126,9 @@ class Pipeline(acts.examples.Sequencer):
         self.minHitsTotal = self.args["minHitsTotal"] or 7
 
         # This selects the tracks we want to look at in the performance plots
+        # Use slightly lower pT here to catch track fitted at threshold
         self.targetTrackSelectorConfig = TrackSelectorConfig(
-            pt=(self.targetPT, None), nMeasurementsMin=self.minHitsTotal
+            pt=(1.0, None), nMeasurementsMin=self.minHitsTotal
         )
 
         # These particles are returned to the chain after the simulation.
@@ -159,7 +160,7 @@ class Pipeline(acts.examples.Sequencer):
         # Binning cfg for plots
         self.binningCfg = {
             "Pt": acts.examples.Binning("pT [GeV/c]", list(np.logspace(-1, 2, 25))),
-            "Eta": acts.examples.Binning("#eta", 25, -3.5, -3.5),
+            "Eta": acts.examples.Binning("#eta", 25, -3.5, 3.5),
             "Phi": acts.examples.Binning("#phi", 50, -3.15, 3.15),
             "Num": acts.examples.Binning("N", 30, -0.5, 29.5),
         }

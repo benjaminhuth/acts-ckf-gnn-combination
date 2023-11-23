@@ -4,11 +4,18 @@ import numpy as np
 import pandas as pd
 import pprint
 import re
+import math
 
 from utils_timing_plots import ChainPlotter
 
+gpu_file = snakemake.input[0]
+try:
+    cpu_file = snakemake.input[1]
+except:
+    print("No CPU timing available")
+    cpu_file = None
 
-plotter = ChainPlotter(snakemake.input[0], snakemake.input[1])
+plotter = ChainPlotter(gpu_file, cpu_file)
 
 chain_names = {
     "gnn": "GNN-based (GPU)",
@@ -32,11 +39,19 @@ pprint.pprint(total_times)
 
 lo_range = (0, 6)
 
+# Ensure we get 5-ticks here
 f = total_times["ckf"] // 5
 hi_range = 5 * f - 1, 5 * (f + 1) + 1
 
+# But only the closer one
+if hi_range[1] - f > f - hi_range[0]:
+    hi_range = (hi_range[0], math.ceil(total_times["ckf"]))
+else:
+    hi_range = (math.floor(total_times["ckf"]), hi_range[1])
+print("high_range",hi_range)
 
-figsize=(2 * len(keys_to_plot), 5)
+# figsize=(2 * len(keys_to_plot), 5)
+figsize=(7,5)
 fig, (ax_hi, ax_lo) = plt.subplots(
     2,
     1,
@@ -54,7 +69,10 @@ ax_lo.set_xticklabels([chain_names[k] for k in keys_to_plot])
 
 # Set ranges
 ax_hi.set_ylim(*hi_range)
-ax_hi.set_yticks([f * 5, (f + 1) * 5])
+
+ticks = np.arange(0,1000,5)
+ticks = ticks[ (ticks >= hi_range[0]) & (ticks <= hi_range[1]) ]
+ax_hi.set_yticks(ticks)
 
 ax_lo.set_ylim(*lo_range)
 ax_lo.set_yticks(np.arange(lo_range[0] + 5, lo_range[1], 5))

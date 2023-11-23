@@ -43,6 +43,7 @@ class ChainPlotter:
             "ckf": self.timing_gpu,
             "poc": self.timing_gpu,
             "gnn": self.timing_gpu,
+            "gnn-nc": self.timing_gpu,
             "gnncpu": self.timing_cpu,
             "ttk": self.timing_gpu,
         }
@@ -57,12 +58,17 @@ class ChainPlotter:
             "poc": {
                 11: "TruthTrackFinder",
                 12: "PrototracksToParsAndSeeds",
-                13: "CkfFromProtoTracks",
+                13: "pocCkfFromProtoTracks",
             },
             "gnn": {
                 15: "TrackFindingMLBasedAlgorithm",
                 16: "PrototracksToParsAndSeeds",
-                17: "CkfFromProtoTracks",
+                17: "gpcCkfFromProtoTracks",
+            },
+            "gnn-nc": {
+                15: "TrackFindingMLBasedAlgorithm",
+                16: "PrototracksToParsAndSeeds",
+                20: "gpcncCkfFromProtoTracks",
             },
             "gnncpu": {
                 6: "TrackFindingMLBasedAlgorithm",
@@ -81,6 +87,7 @@ class ChainPlotter:
             "ckf": "Blues",
             "poc": "Greens",
             "gnn": "Oranges",
+            "gnn-nc": "Oranges",
             "gnncpu": "Oranges",
             "ttk": "Purples",
         }
@@ -101,12 +108,14 @@ class ChainPlotter:
         for (i, name), color in zip(self.algs[key].items(), colors):
             assert name in timing.iloc[i].identifier, f"{name} not in {timing.iloc[i].identifier}"
 
-            if name[-9:] == "Algorithm":
-                name = name[:-9]
-
             t = timing.iloc[i].time_perevent_s
 
             bar = ax.bar(x, height=t, bottom=y, color=color).patches[0]
+
+            if name[-9:] == "Algorithm":
+                name = name[:-9]
+            if "CkfFromProtoTracks" in name:
+                name = "CkfFromProtoTracks"
 
             if bar.get_height() > text_height_threshold:
                 ytext = min(y + 0.5 * t, y + 0.5 * (lo_range[1] - y))

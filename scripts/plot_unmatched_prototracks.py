@@ -48,9 +48,13 @@ class PrototrackPlotter(DetectorPlotter):
         pur = max(counts) / len(prototrack)
 
         try:
-            total_meas = self.particles[ self.particles.particle_id == maj_pid ].iloc[0].n_measurements
+            maj_n_meas = self.particles[ self.particles.particle_id == maj_pid ].iloc[0].n_measurements
+            maj_pt = self.particles[ self.particles.particle_id == maj_pid ].iloc[0].pt
+            maj_pt = f"{maj_pt:.2f} GeV"
         except:
-            total_meas = "<not found>"
+            maj_n_meas = "<not found>"
+            maj_pt = "<not found>"
+
 
         # make A4 sheet
         fig, ax = self.get_fig_ax(figsize=(8.27, 11.67), ax_config=(2, 1))
@@ -58,8 +62,9 @@ class PrototrackPlotter(DetectorPlotter):
         fig.suptitle(
             "Prototrack with ID {} and length {}, "
             "particles: {}, purity: {:.1%}\n"
-            "maj pid: {}, total measurements: {}".format(
-                str(prototrack.trackId.to_list()[0]), len(prototrack), len(pids), pur, maj_pid, total_meas
+            "maj pid: {}, maj n measurements: {}\n"
+            "maj pid pT: {}".format(
+                str(prototrack.trackId.to_list()[0]), len(prototrack), len(pids), pur, maj_pid, maj_n_meas, maj_pt
             )
         )
 
