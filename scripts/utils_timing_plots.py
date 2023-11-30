@@ -98,8 +98,9 @@ class ChainPlotter:
             "TrackFinding" : "Standard CKF"
         })
 
-    def plot_chain(self, key, ax, x, text_height_threshold=0.5, lo_range=None):
+    def plot_chain(self, key, ax, x, text_height_threshold=0.5, lo_range=None, displace_dict={}):
         y = 0
+        ys = []
 
         n_algs = len(self.algs[key])
         colors = matplotlib.colormaps[self.cmaps[key]](np.linspace(0.5, 0.7, n_algs))
@@ -107,10 +108,20 @@ class ChainPlotter:
 
         for (i, name), color in zip(self.algs[key].items(), colors):
             assert name in timing.iloc[i].identifier, f"{name} not in {timing.iloc[i].identifier}"
+            ys.append(y)
 
             t = timing.iloc[i].time_perevent_s
 
-            bar = ax.bar(x, height=t, bottom=y, color=color).patches[0]
+            if name in displace_dict:
+                disp = displace_dict[name]
+            else:
+                disp = 0
+
+            assert disp <= 0.4
+            width = 0.8 - 2*abs(disp)
+            xx = x - disp
+
+            bar = ax.bar(xx, height=t, width=width, bottom=y, color=color).patches[0]
 
             if name[-9:] == "Algorithm":
                 name = name[:-9]
@@ -123,7 +134,9 @@ class ChainPlotter:
 
             y += t
 
-        return ax
+        ys.append(y)
+
+        return ys
 
 
 def plot_stages(x, ax, logfile, plotter):
@@ -174,13 +187,13 @@ def plot_stages(x, ax, logfile, plotter):
     s = gap_time
 
     ax.bar(x, graph_building_time, bottom=s, **bar_args)
-    ax.text(x, s+graph_building_time/2, f"graph building ({graph_building_time:.2f})", ha="center", va="center")
+    ax.text(x, s+graph_building_time/2, f"graph building: {graph_building_time:.2f}", ha="center", va="center")
     s += (graph_building_time + gap_time)
 
     for clf_time, label in zip(classifier_times, classifier_labels):
         ax.bar(x, clf_time, bottom=s, **bar_args)
-        ax.text(x, s+clf_time/2, f"{label} ({clf_time:.2f})", ha="center", va="center")
+        ax.text(x, s+clf_time/2, f"{label}: {clf_time:.2f}", ha="center", va="center")
         s += (clf_time + gap_time)
 
     ax.bar(x, track_building_time, bottom=s, **bar_args)
-    ax.text(x, s+track_building_time/2, f"track building ({track_building_time:.2f})", ha="center", va="center")
+    ax.text(x, s+track_building_time/2, f"track building: {track_building_time:.2f}", ha="center", va="center")

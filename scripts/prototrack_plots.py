@@ -157,8 +157,11 @@ particles = ak.to_dataframe(
 hits = uproot.open(snakemake.input[1] + ":hits").arrays(library="pd")
 
 # Load matching dfs
-gnn_ckf_matching_df = pd.read_csv(snakemake.input[5])
-poc_matching_df = pd.read_csv(snakemake.input[6])
+def load_match_df(f):
+    return uproot.open(f"{f}:matchingdetails").arrays(library="pd").rename(columns={"event_nr": "event"})
+
+gnn_ckf_matching_df = load_match_df(snakemake.input[5])
+poc_matching_df = load_match_df(snakemake.input[6])
 
 # Load events
 if False:

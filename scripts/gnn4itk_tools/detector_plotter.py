@@ -23,6 +23,10 @@ class DetectorPlotter:
             for s in [-1, 1]:
                 ax[0].plot([s*z, s*z], [40, 175], color=color, zorder=-20)
 
+        for r in [250, 350, 500, 670]:
+            ax[0].plot([-1200, 1200], [r, r], color=color, zorder=-20)
+            ax[1].add_patch(plt.Circle((0,0), radius=r, ec=color, fill=None, zorder=-20))
+
 
         ax[0].scatter(self.detector.cz, self.detector.cr, s=s, color=color, alpha=1.0, zorder=-20)
         ax[0].set_xlabel("z [mm]")

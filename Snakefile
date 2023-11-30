@@ -52,9 +52,8 @@ rule inference:
         "tmp/{models}/logs/inference.log",
     output:
         expand(
-            "tmp/{{models}}/performance_{type}.{ext}",
+            "tmp/{{models}}/performance_{type}.root",
             type=RECO_TYPES,
-            ext=["csv", "root"],
         ),
         expand(
             "tmp/{{models}}/seeding_performance_{type}.root",
@@ -102,7 +101,7 @@ rule inference_score_sweep:
         "tmp/simdata/hits.root",
         lambda wildcards: f"torchscript/{wildcards.models}/gnn.pt",
     output:
-        "tmp/{models}/score_sweep/performance_gnn_plus_ckf_{score}.csv",
+        "tmp/{models}/score_sweep/performance_gnn_plus_ckf_{score}.root",
     params:
         cuda_visible_devices=os.environ["CUDA_VISIBLE_DEVICES"],
         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
@@ -127,36 +126,9 @@ rule inference_score_sweep:
         "   --targetPT=1.0 "
         "   --cuts {params.cuts} 2>&1 | tee {log}; "
         "mv "
-        "    tmp/{wildcards.models}/score_sweep/performance_gnn_plus_ckf.csv "
-        "    tmp/{wildcards.models}/score_sweep/performance_gnn_plus_ckf_{wildcards.score}.csv; "
+        "    tmp/{wildcards.models}/score_sweep/performance_gnn_plus_ckf.root "
+        "    tmp/{wildcards.models}/score_sweep/performance_gnn_plus_ckf_{wildcards.score}.root; "
         "(cd tmp/{wildcards.models}/score_sweep && rm -r config.json digi gnn_plus_ckf *.root timing.tsv)"
-
-
-# rule inference_cpu_for_timing:
-#     input:
-#         "tmp/simdata/particles_initial.root",
-#         "tmp/simdata/hits.root",
-#         "torchscript/{models}/gnn.pt",
-#     output:
-#         "tmp/{models}/cpu/timing.tsv",
-#     params:
-#         digi=lambda wildcards: DIGI_CONFIG_FILE[wildcards.models],
-#         geosel=lambda wildcards: GEO_SELECTION[wildcards.models],
-#         cuts=lambda wildcards: " ".join(
-#             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
-#         ),
-#     shell:
-#         "CUDA_VISIBLE_DEVICES='' "
-#         "python3 scripts/gnn_ckf.py -n3 -j1 "
-#         "   -o tmp/{wildcards.models}/cpu "
-#         "   -i tmp/simdata "
-#         "   -gnn "
-#         "   --digi={params.digi} "
-#         "   --gnngeosel={params.geosel} "
-#         "   --modeldir=torchscript/{wildcards.models} "
-#         "   --minEnergyDeposit=3.65e-06 "
-#         "   --targetPT=1.0 "
-#         "   --cuts {params.cuts}"
 
 
 rule inference_for_timing:
@@ -175,10 +147,10 @@ rule inference_for_timing:
         cuts=lambda wildcards: " ".join(
             [str(c) for c in CLASSIFIER_CUTS[wildcards.models]]
         ),
-        events=min(config["n_events"], 3),
+        events=min(config["n_events"], 10),
     shell:
         "CUDA_VISIBLE_DEVICES={params.cuda_visible_devices} "
-        "python3 scripts/gnn_ckf.py -n3 -j1 "
+        "python3 scripts/gnn_ckf.py -n{params.events} -j1 "
         "   -o tmp/{wildcards.models}/timing "
         "   -i tmp/simdata "
         "   -ckf -gnn -poc "
@@ -237,8 +209,8 @@ rule prototrack_based_plots:
         "tmp/{models}/digi/event000000000-measurements.csv",
         "tmp/{models}/digi/event000000000-measurement-simhit-map.csv",
         "tmp/{models}/gnn_plus_ckf/event000000000-prototracks.csv",
-        "tmp/{models}/performance_gnn_plus_ckf.csv",
-        "tmp/{models}/performance_proof_of_concept.csv",
+        "tmp/{models}/performance_gnn_plus_ckf.root",
+        "tmp/{models}/performance_proof_of_concept.root",
     output:
         "plots/{models}/detailed_matching_hist.pdf",
         "plots/{models}/detailed_matching_eff.pdf",
@@ -249,7 +221,7 @@ rule prototrack_based_plots:
 
 rule particle_type_eff:
     input:
-        "tmp/{models}/performance_gnn_plus_ckf.csv",
+        "tmp/{models}/performance_gnn_plus_ckf.root",
         "tmp/simdata/particles_initial.root",
     output:
         "latex/{models}_particle_types_eff.tex"
@@ -281,7 +253,7 @@ rule plot_unmatched_prototracks:
         "config/detectors.csv",
         "tmp/simdata/particles_initial.root",
         "tmp/simdata/hits.root",
-        "tmp/{models}/performance_gnn_plus_ckf.csv",
+        "tmp/{models}/performance_gnn_plus_ckf.root",
         "tmp/{models}/digi/event000000000-measurement-simhit-map.csv",
         "tmp/{models}/digi/event000000000-spacepoint.csv",
         "tmp/{models}/gnn_plus_ckf/event000000000-prototracks.csv",
@@ -356,17 +328,17 @@ rule timing_plots_pipeline_crosscomp:
     output:
         "plots/crosscomp/timinig_pipeline_{modelsA}_vs_{modelsB}.pdf",
         "plots/crosscomp/timinig_pipeline_{modelsA}_vs_{modelsB}_no_c.pdf",
+        "plots/crosscomp/timinig_pipeline_{modelsA}_vs_{modelsB}_both.pdf",
     script:
         "scripts/plot_timing_crosscomp_pipelines.py"
 
 rule combine_trackeff_score_sweep:
     input:
-        expand("tmp/{{models}}/score_sweep/performance_gnn_plus_ckf_{score}.csv", score=[ str(s)[:3] for s in np.linspace(0,1,11) ]),
+        expand("tmp/{{models}}/score_sweep/performance_gnn_plus_ckf_{score}.root", score=[ str(s)[:3] for s in np.linspace(0,1,11) ]),
     output:
         "tmp/{models}/score_sweep/result.csv",
     script:
         "scripts/combine_trackeff_score_sweep.py"
-
 
 rule compare_no_combinatorics:
     input:

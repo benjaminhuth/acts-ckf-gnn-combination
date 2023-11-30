@@ -18,7 +18,7 @@ except:
 plotter = ChainPlotter(gpu_file, cpu_file)
 
 chain_names = {
-    "gnn": "GNN-based (GPU)",
+    "gnn": "GNN-based",
     "gnncpu": "GNN-based (CPU)",
     "ckf": "standard CKF",
     "poc": "proof of concept",
@@ -61,8 +61,8 @@ fig, (ax_hi, ax_lo) = plt.subplots(
 )
 
 for x, key in enumerate(keys_to_plot):
-    plotter.plot_chain(key, ax_hi, x, 1000, lo_range=lo_range)
-    plotter.plot_chain(key, ax_lo, x, lo_range=lo_range)
+    plotter.plot_chain(key, ax_hi, x, 100, lo_range=lo_range)
+    plotter.plot_chain(key, ax_lo, x, 0.25, lo_range=lo_range)
 
 ax_lo.set_xticks(np.arange(len(keys_to_plot)))
 ax_lo.set_xticklabels([chain_names[k] for k in keys_to_plot])

@@ -163,6 +163,7 @@ class Pipeline(acts.examples.Sequencer):
             "Eta": acts.examples.Binning("#eta", 25, -3.5, 3.5),
             "Phi": acts.examples.Binning("#phi", 50, -3.15, 3.15),
             "Num": acts.examples.Binning("N", 30, -0.5, 29.5),
+            "DeltaR": acts.examples.Binning("#Delta R", 100, 0, 0.3)
         }
 
         # State checkes
@@ -348,6 +349,7 @@ class Pipeline(acts.examples.Sequencer):
                     self.binningCfg
                 ),
                 doubleMatching=True,
+                writeMatchingDetails=True,
             )
         )
 
@@ -500,6 +502,7 @@ class Pipeline(acts.examples.Sequencer):
                 clusterXScale=-1.0,
                 clusterYScale=-1.0,
                 targetMinPT=self.targetPT,
+                filterShortTracks=True,
             )
         )
 

@@ -1,4 +1,4 @@
-n_events: 50
+n_events: 1 #50
 n_sim_jobs: 10
 n_inference_jobs: 10
 

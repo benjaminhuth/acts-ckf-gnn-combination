@@ -56,7 +56,7 @@ def main():
 
     args = vars(parser.parse_args())
 
-    add_hist_printing = args["events"] == 1
+    add_hist_printing = False #args["events"] == 1
 
     try:
         assert args["events"] > 0

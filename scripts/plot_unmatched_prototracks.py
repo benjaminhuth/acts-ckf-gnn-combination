@@ -159,7 +159,10 @@ class PrototrackPlotter(DetectorPlotter):
 
 
 # Matching df
-match_df = pd.read_csv(snakemake.input[3], dtype={"particle_id": np.uint64})
+def load_match_df(f):
+    return uproot.open(f"{f}:matchingdetails").arrays(library="pd").rename(columns={"event_nr": "event"})
+
+match_df = load_match_df(snakemake.input[3])
 match_df = match_df[match_df.event == 0].copy()
 meff = sum(match_df.matched) / len(match_df.matched)
 print(f"matching efficiency: {meff:.2%}")
