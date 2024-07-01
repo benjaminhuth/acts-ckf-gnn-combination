@@ -73,7 +73,7 @@ class Pipeline(acts.examples.Sequencer):
                     acts_root = d
 
             oddDir = acts_root / "thirdparty/OpenDataDetector"
-            
+
         assert oddDir.exists()
 
         oddMaterialMap = oddDir / "data/odd-material-maps.root"
@@ -81,7 +81,7 @@ class Pipeline(acts.examples.Sequencer):
 
         oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
         self.detector, self.trackingGeometry, decorators = getOpenDataDetector(
-            oddDir, mdecorator=oddMaterialDeco
+            mdecorator=oddMaterialDeco, logLevel=acts.logging.WARNING
         )
 
         self.geoSelectionExaTrkX = (
@@ -191,17 +191,17 @@ class Pipeline(acts.examples.Sequencer):
         if rootParticlesFile.exists() and rootHitsFile.exists():
             self.addReader(
                 acts.examples.RootParticleReader(
-                    level=acts.logging.INFO,
-                    particleCollection=self.all_particles_key,
+                    level=acts.logging.VERBOSE,
+                    outputParticles=self.all_particles_key,
                     filePath=rootParticlesFile,
                 )
             )
 
             self.addReader(
                 acts.examples.RootSimHitReader(
-                    level=acts.logging.INFO,
+                    level=acts.logging.VERBOSE,
                     filePath=rootHitsFile,
-                    simHitCollection="simhits_imported",
+                    outputSimHits="simhits_imported",
                 )
             )
         elif len(list(inputDir.glob("*.csv"))) > 0:
@@ -334,12 +334,28 @@ class Pipeline(acts.examples.Sequencer):
             )
         )
 
+        tpm = f"{workflow_stem}_track_particle_matching"
+        ptm = f"{workflow_stem}_particle_track_matching"
+
+        self.addAlgorithm(
+            acts.examples.TrackTruthMatcher(
+                level=acts.logging.INFO,
+                inputTracks=tracks_key,
+                inputParticles=self.target_particles_key,
+                inputMeasurementParticlesMap="measurement_particles_map",
+                outputTrackParticleMatching=tpm,
+                outputParticleTrackMatching=ptm,
+                doubleMatching=True,
+            )
+        )
+
         self.addWriter(
             acts.examples.CKFPerformanceWriter(
                 level=acts.logging.ERROR,
                 inputParticles=self.target_particles_key,
                 inputTracks=tracks_key,
-                inputMeasurementParticlesMap="measurement_particles_map",
+                inputTrackParticleMatching=tpm,
+                inputParticleTrackMatching=ptm,
                 filePath=self.outputDir / f"performance_{workflow_stem}.root",
                 effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
                 duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
@@ -348,7 +364,6 @@ class Pipeline(acts.examples.Sequencer):
                 fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
                     self.binningCfg
                 ),
-                doubleMatching=True,
                 writeMatchingDetails=True,
             )
         )
@@ -358,7 +373,7 @@ class Pipeline(acts.examples.Sequencer):
                 level=acts.logging.ERROR,
                 inputTracks=tracks_key,
                 inputParticles=self.target_particles_key,
-                inputMeasurementParticlesMap="measurement_particles_map",
+                inputTrackParticleMatching=tpm,
                 filePath=self.outputDir / f"tracksummary_{workflow_stem}.root",
                 treeName="tracksummary",
             )
@@ -695,12 +710,29 @@ class Pipeline(acts.examples.Sequencer):
             logLevel=acts.logging.INFO,
         )
 
+        tpm = "kalman_truth_track_particle_matching"
+        ptm = "kalman_truth_particle_track_matching"
+
+        self.addAlgorithm(
+            acts.examples.TrackTruthMatcher(
+                level=acts.logging.INFO,
+                inputTracks="kalman_truth_tracks_selected",
+                inputParticles=self.target_particles_key,
+                inputMeasurementParticlesMap="measurement_particles_map",
+                outputTrackParticleMatching=tpm,
+                outputParticleTrackMatching=ptm,
+                doubleMatching=True,
+            )
+        )
+
+
         self.addWriter(
             acts.examples.CKFPerformanceWriter(
                 level=acts.logging.WARNING,
                 inputParticles=self.target_particles_key,
+                inputTrackParticleMatching=tpm,
+                inputParticleTrackMatching=ptm,
                 inputTracks="kalman_truth_tracks_selected",
-                inputMeasurementParticlesMap="measurement_particles_map",
                 filePath=str(self.outputDir / ("performance_truth_kalman.root")),
                 effPlotToolConfig=acts.examples.EffPlotToolConfig(self.binningCfg),
                 duplicationPlotToolConfig=acts.examples.DuplicationPlotToolConfig(
@@ -709,6 +741,5 @@ class Pipeline(acts.examples.Sequencer):
                 fakeRatePlotToolConfig=acts.examples.FakeRatePlotToolConfig(
                     self.binningCfg
                 ),
-                doubleMatching=True,
             )
         )

@@ -46,7 +46,7 @@ def run_geant4_sim(args):
 
     oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
     detector, trackingGeometry, decorators = getOpenDataDetector(
-        oddDir, mdecorator=oddMaterialDeco, logLevel=defaultLogLevel
+        mdecorator=oddMaterialDeco, logLevel=defaultLogLevel
     )
 
     field = acts.ConstantBField(acts.Vector3(0.0, 0.0, 2 * u.T))
@@ -96,9 +96,14 @@ def run_geant4_sim(args):
     )
 
     s.run()
+    del s
+
+    os.rename(outputDir/"particles_simulation.root", outputDir/"particles_initial.root")
 
 
 n_events = snakemake.params["events"]
+assert n_events > 0
+
 jobs = min(snakemake.params["jobs"], n_events)
 output_dir = Path(snakemake.output[0]).parent
 output_dir.mkdir(exist_ok=True, parents=True)
@@ -124,3 +129,5 @@ unique_event_ids = np.unique(
     uproot.open(str(output_dir / "hits.root:hits")).arrays(library="pd").event_id
 )
 assert len(unique_event_ids) == n_events
+
+print(uproot.open(str(output_dir / "particles_initial.root:particles")))
